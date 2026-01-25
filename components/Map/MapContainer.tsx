@@ -54,7 +54,7 @@ export default function MapContainer() {
     }
   }, [])
 
-  const handlePlanRoute = useCallback(async () => {
+  const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string) => {
     // Clear any previous errors
     setError(null)
 
@@ -71,13 +71,13 @@ export default function MapContainer() {
 
     try {
       // Find departure and arrival airports
-      const departure = airports.find((a) => a.id === 'KSQL')
-      const arrival = airports.find((a) => a.id === 'KSMF')
+      const departure = airports.find((a) => a.id === departureCode)
+      const arrival = airports.find((a) => a.id === destinationCode)
 
       if (!departure || !arrival) {
         setError({
           title: 'Airport Not Found',
-          message: 'Could not find KSQL or KSMF airports in the data. Please check the airport data files.',
+          message: `Could not find ${!departure ? departureCode : destinationCode} airport in the data. Please check the airport code.`,
         })
         setIsCalculating(false)
         return
@@ -178,7 +178,7 @@ export default function MapContainer() {
         <ErrorDisplay
           title={error.title}
           message={error.message}
-          onRetry={error.title.includes('Route') ? handlePlanRoute : undefined}
+          onRetry={undefined}
           onDismiss={handleDismissError}
         />
       )}

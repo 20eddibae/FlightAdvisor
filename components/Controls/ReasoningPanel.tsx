@@ -34,7 +34,7 @@ export default function ReasoningPanel({
 
       {/* Reasoning Panel */}
       {isVisible && (
-        <Card className="absolute top-16 right-4 bottom-4 w-96 shadow-lg z-10 overflow-hidden flex flex-col">
+        <Card className="absolute top-16 right-4 bottom-4 bg-white w-96 shadow-lg z-10 overflow-hidden flex flex-col">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Route Reasoning</CardTitle>
             <p className="text-xs text-muted-foreground">
