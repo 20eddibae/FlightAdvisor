@@ -1,4 +1,5 @@
 import { FeatureCollection, Feature, Polygon, MultiPolygon } from 'geojson'
+import { DEFAULT_BOUNDS } from './constants'
 
 // Airspace property types
 export interface AirspaceProperties {
@@ -35,26 +36,67 @@ export interface Waypoint {
 export type AirspaceFeature = Feature<Polygon | MultiPolygon, AirspaceProperties>
 export type AirspaceFeatureCollection = FeatureCollection<Polygon | MultiPolygon, AirspaceProperties>
 
-// Data loader functions
-export async function loadAirports(): Promise<Airport[]> {
-  const response = await fetch('/data/airports.json')
-  if (!response.ok) {
-    throw new Error('Failed to load airports data')
+// Data loader functions — always use OpenAIP; no static fallback
+export async function loadAirports(
+  options?: { bounds?: [number, number, number, number] }
+): Promise<Airport[]> {
+  const { fetchAirports, isOpenAIPConfigured } = await import('./api/openaip')
+
+  if (!isOpenAIPConfigured()) {
+    throw new Error(
+      'OpenAIP API not configured. Set OPEN_AIP_API_KEY in .env.local'
+    )
   }
-  const data = await response.json()
-  return data.airports
+
+  const bounds = options?.bounds ?? DEFAULT_BOUNDS
+  const openAIPAirports = await fetchAirports(bounds)
+
+  return openAIPAirports.map((ap) => ({
+    id: ap.icaoCode || ap._id,
+    name: ap.name,
+    lat: ap.geometry.coordinates[1],
+    lon: ap.geometry.coordinates[0],
+    elevation: ap.elevation?.value ?? 0,
+    type: ap.trafficType?.includes('IFR') ? 'towered' : 'non-towered',
+    notes: `Type: ${ap.type}`,
+  }))
 }
 
-export async function loadWaypoints(): Promise<Waypoint[]> {
-  const response = await fetch('/data/waypoints.json')
-  if (!response.ok) {
-    throw new Error('Failed to load waypoints data')
+export async function loadWaypoints(
+  options?: { bounds?: [number, number, number, number] }
+): Promise<Waypoint[]> {
+  const { fetchNavaids, isOpenAIPConfigured } = await import('./api/openaip')
+
+  if (!isOpenAIPConfigured()) {
+    throw new Error(
+      'OpenAIP API not configured. Set OPEN_AIP_API_KEY in .env.local'
+    )
   }
-  const data = await response.json()
-  return data.waypoints
+
+  const bounds = options?.bounds ?? DEFAULT_BOUNDS
+  const openAIPNavaids = await fetchNavaids(bounds)
+
+  return openAIPNavaids.map((navaid) => ({
+    id: navaid._id,
+    name: navaid.name,
+    lat: navaid.geometry.coordinates[1],
+    lon: navaid.geometry.coordinates[0],
+    type: navaid.type as
+      | 'VOR'
+      | 'VORTAC'
+      | 'NDB'
+      | 'GPS_FIX'
+      | 'INTERSECTION',
+    frequency: navaid.frequency
+      ? `${navaid.frequency.value} ${navaid.frequency.unit}`
+      : undefined,
+    description: `${navaid.type} navigation aid`,
+  }))
 }
 
-export async function loadAirspace(filename: string): Promise<AirspaceFeatureCollection> {
+export async function loadAirspace(
+  filename: string
+): Promise<AirspaceFeatureCollection> {
   const response = await fetch(`/data/airspace/${filename}`)
   if (!response.ok) {
     throw new Error(`Failed to load airspace data: ${filename}`)
@@ -62,18 +104,23 @@ export async function loadAirspace(filename: string): Promise<AirspaceFeatureCol
   return response.json()
 }
 
-// Helper to load all airspace data
-export async function loadAllAirspace(): Promise<AirspaceFeatureCollection> {
-  const [classB, restricted] = await Promise.all([
-    loadAirspace('sfo_class_b.geojson'),
-    loadAirspace('restricted_zones.geojson'),
-  ])
+// Load all airspace from OpenAIP only
+export async function loadAllAirspace(
+  options?: { bounds?: [number, number, number, number] }
+): Promise<AirspaceFeatureCollection> {
+  const { fetchAllAirspace, isOpenAIPConfigured } = await import(
+    './api/openaip'
+  )
 
-  // Combine all features into a single FeatureCollection
-  return {
-    type: 'FeatureCollection',
-    features: [...classB.features, ...restricted.features],
+  if (!isOpenAIPConfigured()) {
+    throw new Error(
+      'OpenAIP API not configured. Set OPEN_AIP_API_KEY in .env.local'
+    )
   }
+
+  const bounds = options?.bounds ?? DEFAULT_BOUNDS
+  const openAIPData = await fetchAllAirspace(bounds)
+  return openAIPData as AirspaceFeatureCollection
 }
 
 // Utility function to convert lat/lon to GeoJSON Point
@@ -82,6 +129,8 @@ export function createPoint(lon: number, lat: number): [number, number] {
 }
 
 // Utility function to get coordinates from Airport or Waypoint
-export function getCoordinates(location: Airport | Waypoint): [number, number] {
+export function getCoordinates(
+  location: Airport | Waypoint
+): [number, number] {
   return [location.lon, location.lat]
 }

@@ -31,6 +31,7 @@ An intelligent flight planning tool that uses AI reasoning to analyze airspace r
 1. **Node.js** 18+ and npm
 2. **Mapbox Access Token**: Get from https://account.mapbox.com/
 3. **Gemini API Key**: Get from https://ai.google.dev/
+4. **OpenAIP API Key**: Get from https://www.openaip.net/ (aviation data: airports, waypoints, airspace)
 
 ## Setup Instructions
 
@@ -50,6 +51,9 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token_here
 
 # Gemini (server-side only, starts with "AIza")
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# OpenAIP (aviation data: airports, waypoints, airspace)
+OPEN_AIP_API_KEY=your_openaip_api_key_here
 \`\`\`
 
 ### 3. Run Development Server

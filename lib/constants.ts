@@ -37,6 +37,9 @@ export const MAPBOX_CONFIG = {
   ZOOM: 8,
 }
 
+// Default bounding box for OpenAIP data (NorCal: KSQL–KSMF region)
+export const DEFAULT_BOUNDS: [number, number, number, number] = [-123.0, 37.0, -121.0, 39.0]
+
 // Route calculation constants
 export const ROUTE_CONFIG = {
   // Waypoint snapping distance in nautical miles
