@@ -6,23 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { US_REGIONS, type CachedAirport } from '@/lib/cache/types';
 import { CACHE_CONFIG } from '@/lib/constants';
+import { toCachedAirport, countAirportTypes } from '@/lib/utils/airportConversion';
 
-interface OpenAIPAirport {
-  _id: string;
-  name: string;
-  icaoCode?: string;
-  type: number;
-  geometry: {
-    type: string;
-    coordinates: [number, number];
-  };
-  elevation?: {
-    value: number;
-    unit: string;
-    referenceDatum: string;
-  };
-  trafficType?: number[];
-}
+// Import OpenAIPAirport from shared types to ensure consistency
+import type { OpenAIPAirport } from '@/lib/api/openaip';
 
 /**
  * Fetch airports from OpenAIP with pagination support
@@ -34,10 +21,12 @@ async function fetchAirportsFromOpenAIP(
   const [west, south, east, north] = bounds;
   const bbox = `${west},${south},${east},${north}`;
 
-  const url = `https://api.core.openaip.net/api/airports?bbox=${bbox}&limit=${limit}&apiKey=${process.env.OPEN_AIP_API_KEY}`;
+  // Use header-based authentication (matches individual API)
+  const url = `https://api.core.openaip.net/api/airports?bbox=${bbox}&limit=${limit}`;
 
   const response = await fetch(url, {
     headers: {
+      'x-openaip-api-key': process.env.OPEN_AIP_API_KEY!,
       'Accept': 'application/json',
     },
   });
@@ -52,28 +41,7 @@ async function fetchAirportsFromOpenAIP(
   return data.items || [];
 }
 
-/**
- * Convert OpenAIP airport to CachedAirport format
- */
-function convertToCachedAirport(
-  airport: OpenAIPAirport,
-  regionName: string
-): CachedAirport {
-  return {
-    id: airport.icaoCode || airport._id,
-    name: airport.name,
-    lat: airport.geometry.coordinates[1],
-    lon: airport.geometry.coordinates[0],
-    elevation: airport.elevation?.value || 0,
-    type: airport.trafficType?.includes(0) ? 'towered' : 'non-towered',
-    notes: `Type: ${airport.type}`,
-    _metadata: {
-      region: regionName,
-      cachedAt: Date.now(),
-      source: 'openaip',
-    },
-  };
-}
+// REMOVED: Use shared utility from lib/utils/airportConversion.ts instead
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,17 +82,32 @@ export async function GET(request: NextRequest) {
     // Fetch airports from OpenAIP
     const openAIPAirports = await fetchAirportsFromOpenAIP(region.bounds);
 
-    // Convert to CachedAirport format
+    // Convert to CachedAirport format using shared utility
     const cachedAirports: CachedAirport[] = openAIPAirports.map((airport) =>
-      convertToCachedAirport(airport, regionName)
+      toCachedAirport(airport, regionName)
     );
 
-    console.log(`✓ Fetched ${cachedAirports.length} airports for ${regionName}`);
+    // Count airport types using shared utility
+    const counts = countAirportTypes(openAIPAirports);
+
+    console.log(`✓ Fetched ${counts.total} airports for ${regionName}`);
+    console.log(`   → ${counts.towered} towered (ICAO-coded), ${counts.nonTowered} non-towered, ${counts.heliports} heliports`);
+
+    // Show sample towered airports
+    const sampleTowered = cachedAirports.filter(ap => ap.type === 'towered').slice(0, 3);
+    if (sampleTowered.length > 0) {
+      console.log(`   → Sample towered:`, sampleTowered.map(ap => ap.id).join(', '));
+    } else {
+      console.warn(`   ⚠️  NO TOWERED AIRPORTS FOUND - ICAO detection may be broken!`);
+    }
 
     return NextResponse.json({
       success: true,
       region: regionName,
-      count: cachedAirports.length,
+      count: counts.total,
+      towered: counts.towered,
+      nonTowered: counts.nonTowered,
+      heliports: counts.heliports,
       data: cachedAirports,
     });
   } catch (error) {

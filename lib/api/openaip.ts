@@ -42,21 +42,34 @@ export interface OpenAIPAirspaceResponse {
 
 /**
  * Airport data from OpenAIP
+ *
+ * Type codes (numeric):
+ * - 2 = Large airport (commercial service)
+ * - 3 = Medium airport (regional)
+ * - 4 = Small airport (general aviation)
+ * - 5 = Closed airport
+ * - 6 = Heliport (civilian)
+ * - 7 = Military/restricted
+ *
+ * Traffic type codes (numeric):
+ * - 0 = VFR only
+ * - 1 = IFR available
  */
 export interface OpenAIPAirport {
   _id: string
   name: string
   icaoCode?: string
-  type: string
+  type: number  // FIXED: OpenAIP returns numeric codes, not strings
   geometry: {
-    type: 'Point'
+    type: 'Point' | string  // Allow string for bulk API compatibility
     coordinates: [number, number] // [lon, lat]
   }
   elevation?: {
     value: number
     unit: string
+    referenceDatum?: string  // Optional field from bulk API
   }
-  trafficType?: string[]
+  trafficType?: number  // FIXED: OpenAIP returns single number, not array
 }
 
 /**
@@ -121,7 +134,7 @@ export async function fetchAirspaces(
   const bbox = formatBBox(bounds)
   const params = new URLSearchParams({
     bbox,
-    limit: '100', // Fetch up to 100 airspaces
+    limit: '500', // Increased from 100 to capture all airspace in dense regions
   })
 
   // Add type filter if provided (numeric codes)
@@ -259,7 +272,7 @@ export async function fetchAirports(
   const bbox = formatBBox(bounds)
   const params = new URLSearchParams({
     bbox,
-    limit: '100',
+    limit: '500', // Increased from 100 to match BULK_FETCH_LIMIT - ensures major airports are included
   })
 
   if (filters?.type && filters.type.length > 0) {
@@ -303,7 +316,7 @@ export async function fetchNavaids(
   const bbox = formatBBox(bounds)
   const params = new URLSearchParams({
     bbox,
-    limit: '100',
+    limit: '500', // Increased from 100 to ensure all navaids in dense regions are loaded
   })
 
   if (filters?.type && filters.type.length > 0) {

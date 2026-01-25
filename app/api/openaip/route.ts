@@ -5,6 +5,7 @@ import {
   fetchNavaids,
   isOpenAIPConfigured,
 } from '@/lib/api/openaip'
+import { toAirport, countAirportTypes } from '@/lib/utils/airportConversion'
 
 /**
  * OpenAIP API Route
@@ -80,12 +81,23 @@ export async function GET(request: NextRequest) {
 
       case 'airports': {
         const airports = await fetchAirports(bounds)
+
+        // Convert using shared utility (ensures consistency with bulk API)
+        const convertedAirports = airports.map(toAirport)
+
+        // Count using shared utility
+        const counts = countAirportTypes(airports)
+        console.log(`✓ /api/openaip airports: ${counts.total} total, ${counts.towered} towered, ${counts.heliports} heliports`)
+
         return NextResponse.json({
           success: true,
           type: 'airports',
           bounds,
-          count: airports.length,
-          data: airports,
+          count: counts.total,
+          towered: counts.towered,
+          nonTowered: counts.nonTowered,
+          heliports: counts.heliports,
+          data: convertedAirports,
         })
       }
 

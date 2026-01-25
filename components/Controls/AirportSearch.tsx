@@ -189,25 +189,38 @@ export function AirportSearch({
           ref={dropdownRef}
           className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto border shadow-xl bg-white"
         >
-          {results.map((airport, index) => (
-            <div
-              key={airport.id}
-              onClick={() => handleSelect(airport)}
-              onMouseEnter={() => setSelectedIndex(index)}
-              className={`px-4 py-3 cursor-pointer transition-colors border-b last:border-b-0 ${
-                index === selectedIndex
-                  ? 'bg-blue-50'
-                  : 'hover:bg-gray-50'
-              }`}
-            >
-              <div className="font-semibold text-gray-900">
-                {airport.name}
+          {results.map((airport, index) => {
+            // Check if ID is a valid ICAO code
+            const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
+
+            return (
+              <div
+                key={airport.id}
+                onClick={() => handleSelect(airport)}
+                onMouseEnter={() => setSelectedIndex(index)}
+                className={`px-4 py-3 cursor-pointer transition-colors border-b last:border-b-0 ${
+                  index === selectedIndex
+                    ? 'bg-blue-50'
+                    : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="font-semibold text-gray-900">
+                  {isICAO ? (
+                    <>
+                      <span className="font-mono text-blue-600">{airport.id}</span>
+                      {' - '}
+                      {airport.name}
+                    </>
+                  ) : (
+                    airport.name
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {airport.type === 'towered' ? 'Towered' : 'Non-towered'} • Elevation: {airport.elevation}ft
+                </div>
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {airport.type === 'towered' ? 'Towered' : 'Non-towered'} • Elevation: {airport.elevation}ft
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </Card>
       )}
 
