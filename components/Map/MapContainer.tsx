@@ -538,7 +538,7 @@ export default function MapContainer() {
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
       {map && airports.length > 0 && <AirportMarkers map={map} airports={airports} />}
       {map && waypoints.length > 0 && <WaypointMarkers map={map} waypoints={waypoints} />}
-      {map && route && <RouteLayer map={map} coordinates={route.coordinates} />}
+      {map && route && <RouteLayer map={map} route={route} />}
 
       {error && (
         <ErrorDisplay
