@@ -86,14 +86,29 @@ export async function GET(
 
     const currentWeatherData = await weatherResponse.json()
 
-    // Prepare response
+    // Extract METAR and TAF for each airport for easy access
+    const departureWeather = currentWeatherData.stations?.find((s: any) => s.station === flight.departure)
+    const arrivalWeather = currentWeatherData.stations?.find((s: any) => s.station === flight.arrival)
+
+    // Prepare response with explicit METAR/TAF data
     const response: any = {
       flight_id: flight.id,
       departure: flight.departure,
       arrival: flight.arrival,
       flight_date: flight.flight_date,
+
+      // Baseline weather (when flight was saved)
       baseline_weather: flight.baseline_weather,
+
+      // Current weather (live data with full structure)
       current_weather: currentWeatherData,
+
+      // Explicit METAR/TAF for easy access by sim.ai
+      departure_metar: departureWeather?.metar || null,
+      departure_taf: departureWeather?.taf || null,
+      arrival_metar: arrivalWeather?.metar || null,
+      arrival_taf: arrivalWeather?.taf || null,
+
       last_checked: new Date().toISOString(),
     }
 
@@ -103,6 +118,8 @@ export async function GET(
         flight.baseline_weather,
         currentWeatherData
       )
+      response.has_significant_changes = response.changes.length > 0
+      response.has_high_severity = response.changes.some((c: any) => c.severity === 'high')
     }
 
     // Update last_weather_check timestamp in Supabase
