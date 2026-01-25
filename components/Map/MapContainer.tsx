@@ -20,6 +20,7 @@ const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
 const WaypointMarkers = dynamic(() => import('./WaypointMarkers'), { ssr: false })
 const AirspaceLayer = dynamic(() => import('./AirspaceLayer'), { ssr: false })
 const RouteLayer = dynamic(() => import('./RouteLayer'), { ssr: false })
+const CloudLayer = dynamic(() => import('./CloudLayer'), { ssr: false })
 
 
 export default function MapContainer() {
@@ -49,6 +50,10 @@ export default function MapContainer() {
     metar: any | null
     taf: any | null
   }> | undefined>(undefined)
+
+  // Cloud data for map visualization (METAR GeoJSON)
+  const [cloudData, setCloudData] = useState<GeoJSON.FeatureCollection | null>(null)
+  const lastCloudFetchRef = useRef<number>(0)
 
   // Track current route endpoints for clustering exclusion
   const [currentDepartureId, setCurrentDepartureId] = useState<string | undefined>(undefined)
@@ -95,6 +100,58 @@ export default function MapContainer() {
       viewportCacheRef.current.clear()
     }
   }, [map])
+
+  /**
+   * Fetch cloud data (METAR) for the current viewport
+   * Only fetches if more than 5 minutes have passed since last fetch
+   */
+  const updateCloudData = useCallback(async (mapInstance: MapRef) => {
+    const now = Date.now()
+    const CLOUD_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+    // Check if we need to refresh (5-minute cache)
+    if (now - lastCloudFetchRef.current < CLOUD_CACHE_TTL) {
+      // Still within cache window, skip fetch
+      return
+    }
+
+    try {
+      // Get current viewport bounds
+      const bounds = mapInstance.getBounds()
+      const bbox = [
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth()
+      ].join(',')
+
+      console.log(`Fetching METAR cloud data for bbox: ${bbox}`)
+
+      const response = await fetch(`/api/weather?bbox=${bbox}`)
+
+      if (!response.ok) {
+        console.warn(`Cloud data fetch failed: ${response.status}`)
+        return
+      }
+
+      const data = await response.json()
+
+      if (data.type === 'FeatureCollection' && data.features) {
+        setCloudData(data)
+        lastCloudFetchRef.current = now
+        console.log(`✓ Loaded ${data.features.length} METAR stations with cloud data`)
+
+        // Debug: Show sample station
+        if (data.features.length > 0) {
+          const sample = data.features[0]
+          console.log(`   Sample: ${sample.properties?.id} - ${sample.properties?.cover}, ceil=${sample.properties?.ceil || 'none'}`)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to fetch cloud data:', error)
+      // Don't show error to user - cloud data is supplementary
+    }
+  }, [])
 
   const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
@@ -454,6 +511,9 @@ export default function MapContainer() {
     hasLoadedDataRef.current = true // Mark as loaded to prevent duplicate load
     await loadDataForViewport(loadedMap)
 
+    // Load initial cloud data (METAR)
+    await updateCloudData(loadedMap)
+
     // Remove old event listener if exists
     if (moveEndHandlerRef.current) {
       try {
@@ -475,6 +535,8 @@ export default function MapContainer() {
         try {
           if (loadedMap && loadedMap.getStyle()) {
             loadDataForViewport(loadedMap)
+            // Update cloud data (has built-in 5-minute cache)
+            updateCloudData(loadedMap)
           }
         } catch (e) {
           console.warn('Map no longer valid:', e)
@@ -488,7 +550,7 @@ export default function MapContainer() {
     // Add event listener
     loadedMap.on('moveend', handleMoveEnd)
     console.log('Map initialization complete')
-  }, [loadDataForViewport, isInitialized])
+  }, [loadDataForViewport, updateCloudData, isInitialized])
 
   const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string, maxSegmentLength?: number) => {
     console.log('🛫 Planning route:', departureCode, '→', destinationCode, maxSegmentLength ? `(Max Segment: ${maxSegmentLength} NM)` : '')
@@ -730,6 +792,7 @@ export default function MapContainer() {
     <>
       <MapView onMapLoad={handleMapLoad} />
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
+      {map && cloudData && <CloudLayer map={map} cloudData={cloudData} />}
       {map && airports.length > 0 ? (
         <>
           {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports`)}
