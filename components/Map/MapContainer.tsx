@@ -9,7 +9,7 @@ import ErrorDisplay from '../Controls/ErrorDisplay'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
-import type { RouteReasoningResponse } from '@/lib/api/gemini'
+import { US_REGIONS } from '@/lib/constants'
 
 // Dynamically import map layers to avoid SSR issues with Mapbox GL
 const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
@@ -32,20 +32,20 @@ export default function MapContainer() {
 
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
 
-  const handleMapLoad = useCallback(async (loadedMap: MapRef) => {
-    setMap(loadedMap)
-
-    // NorCal bounds for OpenAIP queries (KSQL to KSMF region)
-    const bounds = '-123,37,-121,39'
-
-    // Load aviation data from API routes
+  const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
-      console.log('Loading aviation data from OpenAIP API...')
+      // Get current viewport bounds
+      const bounds = mapInstance.getBounds()
+      const sw = bounds.getSouthWest()
+      const ne = bounds.getNorthEast()
+      const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`
+
+      console.log('Loading aviation data for visible region...')
 
       const [airportsRes, navaidsRes, airspaceRes] = await Promise.all([
-        fetch(`/api/openaip?type=airports&bounds=${bounds}`),
-        fetch(`/api/openaip?type=navaids&bounds=${bounds}`),
-        fetch(`/api/openaip?type=airspace&bounds=${bounds}`),
+        fetch(`/api/openaip?type=airports&bounds=${bbox}`),
+        fetch(`/api/openaip?type=navaids&bounds=${bbox}`),
+        fetch(`/api/openaip?type=airspace&bounds=${bbox}`),
       ])
 
       if (!airportsRes.ok || !navaidsRes.ok || !airspaceRes.ok) {
@@ -88,7 +88,7 @@ export default function MapContainer() {
       setAirspace(airspace)
 
       console.log(
-        `✓ Loaded ${airports.length} airports, ${waypoints.length} waypoints, ${airspace.features.length} airspace features`
+        `✓ Loaded ${airports.length} airports, ${waypoints.length} waypoints, ${airspace.features.length} airspace features for visible area`
       )
     } catch (error) {
       console.error('Failed to load aviation data:', error)
@@ -100,7 +100,19 @@ export default function MapContainer() {
     }
   }, [])
 
-  const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string) => {
+  const handleMapLoad = useCallback(async (loadedMap: MapRef) => {
+    setMap(loadedMap)
+
+    // Load initial data for viewport
+    await loadDataForViewport(loadedMap)
+
+    // Reload data when map stops moving (pan/zoom complete)
+    loadedMap.on('moveend', () => {
+      loadDataForViewport(loadedMap)
+    })
+  }, [loadDataForViewport])
+
+  const handlePlanRoute = useCallback(async () => {
     // Clear any previous errors
     setError(null)
 
