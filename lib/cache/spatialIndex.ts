@@ -159,9 +159,9 @@ export class AirportSpatialIndex {
       }
     }
 
-    // Sort results with improved ICAO prioritization
+    // Sort results with improved ICAO and name prioritization
     results.sort((a, b) => {
-      // Exact match comes first
+      // Exact ID match comes first
       const aExact = a.id.toUpperCase() === upperQuery;
       const bExact = b.id.toUpperCase() === upperQuery;
       if (aExact && !bExact) return -1;
@@ -181,6 +181,22 @@ export class AirportSpatialIndex {
       const bIdMatch = b.id.toLowerCase().startsWith(lowerQuery);
       if (aIdMatch && !bIdMatch) return -1;
       if (!aIdMatch && bIdMatch) return 1;
+
+      // Name starts with query (e.g., "logan" matches "Logan International")
+      const aNameStart = a.name.toLowerCase().startsWith(lowerQuery);
+      const bNameStart = b.name.toLowerCase().startsWith(lowerQuery);
+      if (aNameStart && !bNameStart) return -1;
+      if (!aNameStart && bNameStart) return 1;
+
+      // Name contains query as whole word (e.g., "Boston Logan" matches "General Edward Lawrence Logan")
+      const aNameWordMatch = a.name.toLowerCase().split(/\s+/).some(word => word.startsWith(lowerQuery));
+      const bNameWordMatch = b.name.toLowerCase().split(/\s+/).some(word => word.startsWith(lowerQuery));
+      if (aNameWordMatch && !bNameWordMatch) return -1;
+      if (!aNameWordMatch && bNameWordMatch) return 1;
+
+      // Prioritize towered airports (major airports) over non-towered
+      if (a.type === 'towered' && b.type !== 'towered') return -1;
+      if (a.type !== 'towered' && b.type === 'towered') return 1;
 
       // Default: alphabetical by ID
       return a.id.localeCompare(b.id);

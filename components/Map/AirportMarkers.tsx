@@ -56,9 +56,13 @@ export default function AirportMarkers({ map, airports, departureId, destination
     const toweredAirports = airports.filter(ap => ap.type === 'towered')
     const nonToweredAirports = airports.filter(ap => ap.type === 'non-towered')
     console.log(`🟢 AirportMarkers rendering: ${airports.length} total (${toweredAirports.length} towered, ${nonToweredAirports.length} non-towered)`)
+    console.log(`   Zoom level: ${zoom.toFixed(1)}`)
 
     if (toweredAirports.length > 0) {
       console.log('   Towered airports to render:', toweredAirports.slice(0, 5).map(ap => ap.id).join(', '))
+    }
+    if (nonToweredAirports.length > 0) {
+      console.log('   Non-towered airports to render:', nonToweredAirports.slice(0, 5).map(ap => ap.id).join(', '))
     }
 
     // Cleanup existing markers
@@ -68,10 +72,15 @@ export default function AirportMarkers({ map, airports, departureId, destination
     const markers: mapboxgl.Marker[] = []
 
     // Apply clustering based on zoom level
-    // Never cluster departure/destination airports
-    const excludeIds = [departureId, destinationId].filter(Boolean) as string[]
+    // Never cluster departure/destination airports OR major towered airports
+    const toweredAirportIds = airports
+      .filter(ap => ap.type === 'towered')
+      .map(ap => ap.id)
+    const excludeIds = [...toweredAirportIds, departureId, destinationId].filter(Boolean) as string[]
     const radiusNM = getClusterRadiusNM(zoom)
     const clusters = clusterAirports(airports, radiusNM, excludeIds)
+
+    console.log(`🏢 Always showing ${toweredAirportIds.length} major airports individually (never clustered)`)
 
     if (zoom < 9 && clusters.length < airports.length) {
       console.log(`✈️  Clustering airports at zoom ${zoom.toFixed(1)}: ${airports.length} → ${clusters.length} (${radiusNM}nm radius)`)
@@ -147,22 +156,56 @@ export default function AirportMarkers({ map, airports, departureId, destination
         const isMajorAirport = airport.type === 'towered'
         const isDeparture = departureId && airport.id === departureId
         const isDestination = destinationId && airport.id === destinationId
+        const isWeatherStation = airport._metadata?.isWeatherStation
 
         // Create popup with airport information
-        const popup = new mapboxgl.Popup({
-          offset: 18,
-          closeButton: false,
-        }).setHTML(`
-          <div style="padding: 4px;">
-            <strong>${airport.id}</strong><br/>
-            ${airport.name}<br/>
+        let popupHTML = `
+          <div style="padding: 6px; font-family: sans-serif; min-width: 200px;">
+            <strong style="font-size: 14px;">${airport.id}</strong><br/>
+            <span style="font-size: 11px; color: #666;">${airport.name}</span><br/>
+        `
+
+        if (isWeatherStation && airport._metadata?.metar) {
+          // Weather station popup with METAR data
+          const metar = airport._metadata.metar
+          const fltcat = metar.fltcat || 'UNKNOWN'
+          const fltcatColors: Record<string, string> = {
+            'VFR': '#00ff00',
+            'MVFR': '#ffff00',
+            'IFR': '#ff0000',
+            'LIFR': '#ff00ff'
+          }
+          const fltcatColor = fltcatColors[fltcat] || '#808080'
+          const ceilingText = metar.ceil ? `${metar.ceil}ft` : metar.cover || 'Unknown'
+
+          popupHTML += `
+            <div style="margin-top: 6px; font-size: 11px;">
+              <strong style="color: ${fltcatColor};">${fltcat}</strong><br/>
+              <strong>Ceiling:</strong> ${ceilingText}<br/>
+              <strong>Cover:</strong> ${metar.cover || 'Unknown'}<br/>
+              <strong>Visibility:</strong> ${metar.visib || 'Unknown'} SM<br/>
+              ${metar.temp !== null && metar.temp !== undefined ? `<strong>Temp:</strong> ${metar.temp}°C<br/>` : ''}
+              ${metar.dewp !== null && metar.dewp !== undefined ? `<strong>Dewpoint:</strong> ${metar.dewp}°C<br/>` : ''}
+            </div>
+            ${metar.rawOb ? `<div style="margin-top: 4px; font-size: 9px; color: #999; font-family: monospace; max-width: 250px; word-wrap: break-word;">${metar.rawOb}</div>` : ''}
+          `
+        } else {
+          // Regular airport popup
+          popupHTML += `
             <span style="font-size: 11px; color: #666;">
               Elevation: ${airport.elevation}' MSL<br/>
               ${airport.type === 'towered' ? 'Towered' : 'Non-towered'}<br/>
               ${airport.notes || ''}
             </span>
-          </div>
-        `)
+          `
+        }
+
+        popupHTML += `</div>`
+
+        const popup = new mapboxgl.Popup({
+          offset: 18,
+          closeButton: false,
+        }).setHTML(popupHTML)
 
         // Safety check: ensure map is still valid for marker addition
         if (!map.getCanvasContainer()) return
@@ -228,6 +271,17 @@ export default function AirportMarkers({ map, airports, departureId, destination
     })
 
     markersRef.current = markers
+
+    console.log(`✅ AirportMarkers: Created ${markers.length} markers (${clusters.length} clusters/individuals)`)
+
+    // Debug: Check if markers are actually in the DOM
+    setTimeout(() => {
+      const markerElements = document.querySelectorAll('.airport-marker')
+      console.log(`🔍 Airport markers in DOM: ${markerElements.length}`)
+      if (markerElements.length === 0) {
+        console.warn('⚠️ No airport markers found in DOM after render!')
+      }
+    }, 100)
 
     // Cleanup on unmount
     return () => {

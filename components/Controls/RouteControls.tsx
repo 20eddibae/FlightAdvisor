@@ -16,6 +16,8 @@ interface RouteControlsProps {
     estimated_time_min: number
     type: 'direct' | 'avoiding_airspace'
   } | null
+  showCloudLayer?: boolean
+  onToggleCloudLayer?: () => void
 }
 
 export default function RouteControls({
@@ -23,6 +25,8 @@ export default function RouteControls({
   onClearRoute,
   isCalculating,
   routeInfo,
+  showCloudLayer = true,
+  onToggleCloudLayer,
 }: RouteControlsProps) {
   const [departure, setDeparture] = useState<CachedAirport | null>(null)
   const [destination, setDestination] = useState<CachedAirport | null>(null)
@@ -165,6 +169,23 @@ export default function RouteControls({
             Clear
           </Button>
         </div>
+
+        {/* Weather Layer Toggle */}
+        {onToggleCloudLayer && (
+          <div className="pt-2 border-t">
+            <Button
+              onClick={onToggleCloudLayer}
+              variant={showCloudLayer ? "default" : "outline"}
+              size="sm"
+              className="w-full text-xs"
+            >
+              {showCloudLayer ? '☁️ Hide Weather' : '☁️ Show Weather'}
+            </Button>
+            <p className="text-[10px] text-muted-foreground mt-1 text-center">
+              {showCloudLayer ? 'Weather stations visible' : 'Weather stations hidden'}
+            </p>
+          </div>
+        )}
         </CardContent>
       )}
     </Card>

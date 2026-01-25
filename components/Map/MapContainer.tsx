@@ -53,7 +53,8 @@ export default function MapContainer() {
 
   // Cloud data for map visualization (METAR GeoJSON)
   const [cloudData, setCloudData] = useState<GeoJSON.FeatureCollection | null>(null)
-  const lastCloudFetchRef = useRef<number>(0)
+  const [showCloudLayer, setShowCloudLayer] = useState(true) // Toggle for cloud visibility
+  const lastCloudFetchRef = useRef<number>(0) // Start at 0 to force initial fetch
 
   // Track current route endpoints for clustering exclusion
   const [currentDepartureId, setCurrentDepartureId] = useState<string | undefined>(undefined)
@@ -104,14 +105,22 @@ export default function MapContainer() {
   /**
    * Fetch cloud data (METAR) for the current viewport
    * Only fetches if more than 5 minutes have passed since last fetch
+   * Converts METAR features to Airport objects and merges them with existing airports
    */
   const updateCloudData = useCallback(async (mapInstance: MapRef) => {
     const now = Date.now()
     const CLOUD_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
+    console.log('🌤️ updateCloudData called', {
+      cacheAge: now - lastCloudFetchRef.current,
+      cacheTTL: CLOUD_CACHE_TTL,
+      willFetch: now - lastCloudFetchRef.current >= CLOUD_CACHE_TTL
+    })
+
     // Check if we need to refresh (5-minute cache)
     if (now - lastCloudFetchRef.current < CLOUD_CACHE_TTL) {
       // Still within cache window, skip fetch
+      console.log('⏭️ Skipping cloud fetch - still within cache window')
       return
     }
 
@@ -125,33 +134,100 @@ export default function MapContainer() {
         bounds.getNorth()
       ].join(',')
 
-      console.log(`Fetching METAR cloud data for bbox: ${bbox}`)
+      console.log(`🌐 Fetching METAR cloud data for bbox: ${bbox}`)
 
       const response = await fetch(`/api/weather?bbox=${bbox}`)
 
       if (!response.ok) {
-        console.warn(`Cloud data fetch failed: ${response.status}`)
+        console.warn(`❌ Cloud data fetch failed: ${response.status}`)
         return
       }
 
       const data = await response.json()
 
+      console.log('📦 Received weather data:', {
+        type: data.type,
+        featureCount: data.features?.length || 0
+      })
+
       if (data.type === 'FeatureCollection' && data.features) {
+        console.log('✅ Setting cloudData state with', data.features.length, 'features')
         setCloudData(data)
         lastCloudFetchRef.current = now
-        console.log(`✓ Loaded ${data.features.length} METAR stations with cloud data`)
+
+        // Convert METAR features to Airport objects for searchability and consistent UI
+        const weatherStationAirports: Airport[] = data.features.map((feature: any) => {
+          const props = feature.properties || {}
+          const coords = feature.geometry?.coordinates || [0, 0]
+
+          return {
+            id: props.id || 'UNKNOWN',
+            name: props.site || props.id || 'Unknown Station',
+            lat: coords[1],
+            lon: coords[0],
+            elevation: props.elev || 0,
+            type: 'towered' as const, // Weather stations are typically at towered airports
+            notes: `Weather Station - ${props.fltcat || 'VFR'} conditions`,
+            _metadata: {
+              isWeatherStation: true,
+              metar: {
+                fltcat: props.fltcat,
+                cover: props.cover,
+                ceil: props.ceil,
+                visib: props.visib,
+                temp: props.temp,
+                dewp: props.dewp,
+                rawOb: props.rawOb,
+                obsTime: props.obsTime
+              }
+            }
+          }
+        })
+
+        console.log(`🌡️ Converting ${weatherStationAirports.length} weather stations to airport objects`)
+
+        // Add weather stations to cache for searchability
+        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized && cache) {
+          const cachedWeatherStations = weatherStationAirports.map(ap => ({
+            id: ap.id,
+            name: ap.name,
+            lat: ap.lat,
+            lon: ap.lon,
+            elevation: ap.elevation,
+            type: ap.type,
+            notes: ap.notes,
+            _metadata: ap._metadata
+          }))
+
+          // Insert weather stations into the cache spatial index
+          cache.addWeatherStations(cachedWeatherStations)
+          console.log(`✅ Added ${cachedWeatherStations.length} weather stations to cache (searchable)`)
+        }
+
+        // Merge weather stations with existing airports
+        // Remove old weather station entries first to avoid duplicates
+        setAirports(prevAirports => {
+          // Filter out old weather stations
+          const nonWeatherAirports = prevAirports.filter(ap => !ap._metadata?.isWeatherStation)
+          // Add new weather stations
+          const merged = [...nonWeatherAirports, ...weatherStationAirports]
+          console.log(`✅ Merged airports: ${nonWeatherAirports.length} regular + ${weatherStationAirports.length} weather stations = ${merged.length} total`)
+          return merged
+        })
 
         // Debug: Show sample station
         if (data.features.length > 0) {
           const sample = data.features[0]
           console.log(`   Sample: ${sample.properties?.id} - ${sample.properties?.cover}, ceil=${sample.properties?.ceil || 'none'}`)
         }
+      } else {
+        console.warn('⚠️ Invalid data format:', data)
       }
     } catch (error) {
-      console.warn('Failed to fetch cloud data:', error)
+      console.error('❌ Failed to fetch cloud data:', error)
       // Don't show error to user - cloud data is supplementary
     }
-  }, [])
+  }, [cache, isInitialized])
 
   const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
@@ -784,6 +860,11 @@ export default function MapContainer() {
     setShowReasoning((prev) => !prev)
   }, [])
 
+  const handleToggleCloudLayer = useCallback(() => {
+    setShowCloudLayer((prev) => !prev)
+    console.log('☁️ Cloud layer toggled:', !showCloudLayer)
+  }, [showCloudLayer])
+
   const handleDismissError = useCallback(() => {
     setError(null)
   }, [])
@@ -792,10 +873,14 @@ export default function MapContainer() {
     <>
       <MapView onMapLoad={handleMapLoad} />
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
-      {map && cloudData && <CloudLayer map={map} cloudData={cloudData} />}
+      {map && cloudData && showCloudLayer && <CloudLayer map={map} cloudData={cloudData} />}
       {map && airports.length > 0 ? (
         <>
-          {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports`)}
+          {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports:`, {
+            sampleIds: airports.slice(0, 5).map(ap => ap.id).join(', '),
+            toweredCount: airports.filter(ap => ap.type === 'towered').length,
+            nonToweredCount: airports.filter(ap => ap.type === 'non-towered').length
+          })}
           <AirportMarkers
             map={map}
             airports={airports}
@@ -827,6 +912,8 @@ export default function MapContainer() {
           estimated_time_min: route.estimated_time_min,
           type: route.type,
         } : null}
+        showCloudLayer={showCloudLayer}
+        onToggleCloudLayer={handleToggleCloudLayer}
       />
 
       <ReasoningPanel

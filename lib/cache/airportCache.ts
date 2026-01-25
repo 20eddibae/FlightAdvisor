@@ -347,6 +347,21 @@ export class AirportCacheManager {
   }
 
   /**
+   * Add weather stations to the cache for searchability
+   * Weather stations are temporary and not persisted to IndexedDB
+   */
+  addWeatherStations(weatherStations: CachedAirport[]): void {
+    if (!this.initialized) {
+      console.warn('Cache not initialized, cannot add weather stations');
+      return;
+    }
+
+    // Insert weather stations into spatial index for searchability
+    this.spatialIndex.insertBatch(weatherStations);
+    console.log(`✓ Added ${weatherStations.length} weather stations to spatial index`);
+  }
+
+  /**
    * Clear all cached data
    */
   async clearCache(): Promise<void> {
