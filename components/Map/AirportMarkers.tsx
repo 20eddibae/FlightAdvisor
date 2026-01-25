@@ -48,6 +48,9 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
       `)
 
       // Create marker
+      // Safety check: ensure map is still valid for marker addition
+      if (!map.getCanvasContainer()) return;
+
       const marker = new mapboxgl.Marker(el)
         .setLngLat([airport.lon, airport.lat])
         .setPopup(popup)
