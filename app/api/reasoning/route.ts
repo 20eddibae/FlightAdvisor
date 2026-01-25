@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateRouteReasoning, RouteReasoningRequest } from '@/lib/api/gemini'
+import {
+  generateRouteReasoning,
+  RouteReasoningRequest,
+  RouteReasoningResponse
+} from '@/lib/api/gemini'
 
 /**
  * POST /api/reasoning
@@ -18,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate reasoning
-    const reasoning = await generateRouteReasoning(body)
+    const reasoning: RouteReasoningResponse = await generateRouteReasoning(body)
 
     return NextResponse.json({
       reasoning,

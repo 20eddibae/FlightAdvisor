@@ -1,11 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { API_TIMEOUT } from '../constants'
-import { generateFallbackReasoningText } from '../fallback-reasoning'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
 // In-memory cache for reasoning results (keyed by route signature)
-const reasoningCache = new Map<string, string>()
+const reasoningCache = new Map<string, RouteReasoningResponse>()
 const MAX_CACHE_SIZE = 5
 
 export interface RouteReasoningRequest {
@@ -14,9 +13,19 @@ export interface RouteReasoningRequest {
   departureCoords: [number, number]
   arrivalCoords: [number, number]
   waypoints: string[]
+  waypointCoords?: Array<[number, number]> // Added for heading calculations
   distance_nm: number
   estimated_time_min: number
   route_type: 'direct' | 'avoiding_airspace'
+}
+
+export interface RouteReasoningResponse {
+  Altitude: number
+  Issues: string
+  Segment_Analysis: string[]
+  Mag_Heading: number[]
+  Go_NoGo: boolean
+  Go_NoGo_Reasoning: string
 }
 
 /**
@@ -32,28 +41,77 @@ function generateCacheKey(request: RouteReasoningRequest): string {
 const SYSTEM_INSTRUCTION = `You are an experienced FAA-certified flight instructor with 20+ years of experience teaching student pilots.
 Your expertise includes VFR navigation, airspace regulations, and flight safety.
 
-When explaining flight routes, focus on:
-1. WHY each waypoint or routing decision was made (safety, navigation, airspace avoidance)
-2. What airspace constraints influenced the routing
-3. Practical aviation terminology that student pilots understand
-4. Educational value - turn every explanation into a learning opportunity
-5. Safety margins and best practices demonstrated in the route
+You MUST respond with valid JSON only. No markdown, no explanation outside the JSON structure.
 
-Keep explanations concise but educational. Use 2-3 sentences per waypoint.
-Always explain in terms of:
-- Navigation aids (VORs, GPS fixes)
-- Airspace classes and requirements
-- Safety considerations (terrain, traffic, weather)
-- Alternatives that were considered and why they were rejected
+When analyzing flight routes, consider:
+1. Magnetic heading hemispheric altitude rule (0-179° = odd thousand + 500, 180-359° = even thousand + 500)
+2. Airspace constraints (Class B/C/D requirements, restricted areas)
+3. Terrain clearance (minimum 500-1000' AGL over obstacles)
+4. Weather and visibility requirements for VFR
+5. Aircraft performance limitations
+6. Navigation aid availability
+7. Emergency landing options along route
 
-Be encouraging and educational, like a patient flight instructor in the right seat.`
+Return ONLY a JSON object with this exact structure:
+{
+  "Altitude": number (cruise altitude in feet MSL based on magnetic heading),
+  "Issues": "string describing potential problems with this route",
+  "Segment_Analysis": ["array of strings", "one per waypoint describing specific concerns"],
+  "Mag_Heading": [array of numbers, magnetic heading for each leg],
+  "Go_NoGo": boolean (true if route is safe to fly, false if significant risks),
+  "Go_NoGo_Reasoning": "string explaining the go/no-go decision"
+}`
+
+/**
+ * Calculate magnetic heading between two points (lat/lon)
+ */
+function calculateMagneticHeading(
+  from: [number, number],
+  to: [number, number]
+): number {
+  const [lon1, lat1] = from
+  const [lon2, lat2] = to
+
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const lat1Rad = (lat1 * Math.PI) / 180
+  const lat2Rad = (lat2 * Math.PI) / 180
+
+  const y = Math.sin(dLon) * Math.cos(lat2Rad)
+  const x =
+    Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+    Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon)
+
+  let heading = (Math.atan2(y, x) * 180) / Math.PI
+
+  // Convert to 0-360 range
+  heading = (heading + 360) % 360
+
+  // Apply magnetic variation for California (approximately 13° East)
+  heading = (heading + 13) % 360
+
+  return Math.round(heading)
+}
+
+/**
+ * Calculate appropriate VFR cruise altitude based on magnetic heading
+ * Hemispheric rule: 0-179° = odd thousands + 500, 180-359° = even thousands + 500
+ */
+function calculateCruiseAltitude(avgMagHeading: number): number {
+  if (avgMagHeading >= 0 && avgMagHeading < 180) {
+    // Eastbound: odd thousands + 500
+    return 5500 // 5,500 ft MSL
+  } else {
+    // Westbound: even thousands + 500
+    return 6500 // 6,500 ft MSL
+  }
+}
 
 /**
  * Generate route reasoning using Gemini 3 Thinking API
  */
 export async function generateRouteReasoning(
   request: RouteReasoningRequest
-): Promise<string> {
+): Promise<RouteReasoningResponse> {
   // Check cache first
   const cacheKey = generateCacheKey(request)
   const cached = reasoningCache.get(cacheKey)
@@ -61,10 +119,16 @@ export async function generateRouteReasoning(
     return cached
   }
 
+  // Calculate magnetic headings for each leg
+  const magHeadings = calculateMagneticHeadings(request)
+  const avgHeading =
+    magHeadings.reduce((sum, h) => sum + h, 0) / magHeadings.length
+  const cruiseAltitude = calculateCruiseAltitude(avgHeading)
+
   // Check if API key is available
   if (!GEMINI_API_KEY) {
     console.warn('Gemini API key not found, using fallback reasoning')
-    return generateFallbackReasoningText()
+    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
   }
 
   try {
@@ -78,7 +142,7 @@ export async function generateRouteReasoning(
     })
 
     // Build the prompt
-    const prompt = buildPrompt(request)
+    const prompt = buildPrompt(request, magHeadings, cruiseAltitude)
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -94,6 +158,17 @@ export async function generateRouteReasoning(
     const response = result.response
     const text = response.text()
 
+    // Parse JSON response
+    let parsedResponse: RouteReasoningResponse
+    try {
+      // Remove markdown code blocks if present
+      const jsonText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      parsedResponse = JSON.parse(jsonText)
+    } catch (parseError) {
+      console.error('Failed to parse Gemini JSON response:', parseError)
+      return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+    }
+
     // Cache the result
     if (reasoningCache.size >= MAX_CACHE_SIZE) {
       // Remove oldest entry
@@ -102,20 +177,93 @@ export async function generateRouteReasoning(
         reasoningCache.delete(firstKey)
       }
     }
-    reasoningCache.set(cacheKey, text)
+    reasoningCache.set(cacheKey, parsedResponse)
 
-    return text
+    return parsedResponse
   } catch (error) {
     console.error('Gemini API error:', error)
     // Fall back to pre-written reasoning
-    return generateFallbackReasoningText()
+    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+  }
+}
+
+/**
+ * Calculate magnetic headings for all legs in the route
+ */
+function calculateMagneticHeadings(request: RouteReasoningRequest): number[] {
+  const headings: number[] = []
+
+  // Build coordinate array
+  const coords: Array<[number, number]> = [request.departureCoords]
+
+  if (request.waypointCoords && request.waypointCoords.length > 0) {
+    coords.push(...request.waypointCoords)
+  }
+
+  coords.push(request.arrivalCoords)
+
+  // Calculate heading for each leg
+  for (let i = 0; i < coords.length - 1; i++) {
+    const heading = calculateMagneticHeading(coords[i], coords[i + 1])
+    headings.push(heading)
+  }
+
+  return headings
+}
+
+/**
+ * Generate fallback reasoning when API is unavailable
+ */
+function generateFallbackReasoning(
+  request: RouteReasoningRequest,
+  magHeadings: number[],
+  cruiseAltitude: number
+): RouteReasoningResponse {
+  const segmentAnalysis: string[] = []
+
+  // Departure segment
+  segmentAnalysis.push(
+    `Departure from ${request.departure}: Initial climb on heading ${magHeadings[0]}°. Monitor traffic pattern and local airspace. Ensure proper clearance from Class B airspace overhead.`
+  )
+
+  // Waypoint segments
+  if (request.waypoints.length > 0) {
+    request.waypoints.forEach((wp, index) => {
+      segmentAnalysis.push(
+        `${wp} waypoint (heading ${magHeadings[index + 1] || magHeadings[index]}°): Provides positive navigation fix. Verify position using GPS and pilotage. Monitor terrain clearance.`
+      )
+    })
+  }
+
+  // Arrival segment
+  segmentAnalysis.push(
+    `Arrival at ${request.arrival}: Begin descent planning 10-15nm out. Contact tower for landing clearance. Brief approach and pattern procedures.`
+  )
+
+  const issues =
+    request.route_type === 'avoiding_airspace'
+      ? 'Route avoids SFO Class B airspace. Monitor GPS position to maintain lateral separation. Higher terrain in East Bay hills requires careful altitude management. Weather patterns from the Bay can affect VFR conditions.'
+      : 'Direct route may require Class B clearance. Monitor ATC frequencies and ensure transponder is operational. Be prepared for potential rerouting.'
+
+  return {
+    Altitude: cruiseAltitude,
+    Issues: issues,
+    Segment_Analysis: segmentAnalysis,
+    Mag_Heading: magHeadings,
+    Go_NoGo: true,
+    Go_NoGo_Reasoning:
+      'Route is viable for VFR flight under normal conditions. Verify current weather, NOTAMs, and TFRs before departure. Ensure aircraft performance is adequate for terrain clearance.',
   }
 }
 
 /**
  * Build prompt for Gemini based on route details
  */
-function buildPrompt(request: RouteReasoningRequest): string {
+function buildPrompt(
+  request: RouteReasoningRequest,
+  magHeadings: number[],
+  cruiseAltitude: number
+): string {
   const {
     departure,
     arrival,
@@ -127,20 +275,22 @@ function buildPrompt(request: RouteReasoningRequest): string {
     route_type,
   } = request
 
-  let prompt = `Explain this VFR flight route from a flight instructor's perspective:
+  let prompt = `Analyze this VFR flight route and return ONLY valid JSON (no markdown, no extra text):
 
 **Route Overview:**
 - Departure: ${departure} (${departureCoords[1].toFixed(4)}°N, ${Math.abs(departureCoords[0]).toFixed(4)}°W)
 - Arrival: ${arrival} (${arrivalCoords[1].toFixed(4)}°N, ${Math.abs(arrivalCoords[0]).toFixed(4)}°W)
-- Distance: ${distance_nm} nautical miles
+- Distance: ${distance_nm.toFixed(1)} nautical miles
 - Estimated Time: ${estimated_time_min} minutes (assuming 120 knots groundspeed)
 - Route Type: ${route_type === 'direct' ? 'Direct Route' : 'Routing to Avoid Airspace'}
+- Calculated Magnetic Headings: ${magHeadings.join('°, ')}°
+- Recommended Cruise Altitude: ${cruiseAltitude}' MSL (hemispheric rule)
 
 `
 
   if (waypoints.length > 0) {
     prompt += `**Waypoints Used:**
-${waypoints.map((wp) => `- ${wp}`).join('\n')}
+${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
 
 `
   }
@@ -148,22 +298,32 @@ ${waypoints.map((wp) => `- ${wp}`).join('\n')}
   prompt += `**Airspace Considerations:**
 - SFO Class B airspace extends from 3,000' to 10,000' MSL over this region
 - Class B requires ATC clearance, two-way radio, and Mode C transponder
-- Alternative routing avoids Class B to maintain VFR flexibility
+- East Bay hills reach 2,000-3,000' MSL - terrain clearance critical
+- Sacramento Class D airspace at destination
 
 **Your Task:**
-Explain WHY this routing was chosen, focusing on:
-1. Why each waypoint provides value (navigation, safety, airspace avoidance)
-2. What airspace constraints influenced the route
-3. What alternatives were considered and why this route is optimal
-4. Safety margins and best practices demonstrated
+Analyze this route for safety and provide a go/no-go recommendation. Consider:
+1. Terrain clearance (especially East Bay hills)
+2. Airspace restrictions and required clearances
+3. Navigation challenges at each waypoint
+4. Weather vulnerability (coastal fog, valley inversions)
+5. Emergency landing options
+6. Aircraft performance requirements
 
-Format your response as a structured explanation with:
-- A brief summary paragraph
-- Segment-by-segment analysis (2-3 sentences each)
-- Safety considerations
-- Educational takeaways for a student pilot
+Return ONLY this JSON structure (no other text):
+{
+  "Altitude": ${cruiseAltitude},
+  "Issues": "string - describe potential problems: terrain, airspace, weather, navigation challenges",
+  "Segment_Analysis": [
+    "Segment 1: ${departure} to ${waypoints[0] || arrival} - describe terrain, climb requirements, airspace",
+    ${waypoints.map((wp, i) => `"Segment ${i + 2}: ${wp} to ${waypoints[i + 1] || arrival} - analyze terrain, navigation, weather exposure"`).join(',\n    ')}
+  ],
+  "Mag_Heading": [${magHeadings.join(', ')}],
+  "Go_NoGo": true or false (based on safety analysis),
+  "Go_NoGo_Reasoning": "string - explain the decision with specific safety factors"
+}
 
-Keep the tone educational and encouraging, like you're sitting next to a student pilot explaining the flight plan.`
+Be specific about real hazards: mention East Bay hills terrain, SFO Class B proximity, valley weather, etc.`
 
   return prompt
 }

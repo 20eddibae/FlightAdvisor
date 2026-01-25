@@ -9,6 +9,7 @@ import ErrorDisplay from '../Controls/ErrorDisplay'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
+import type { RouteReasoningResponse } from '@/lib/api/gemini'
 
 // Dynamically import map layers to avoid SSR issues with Mapbox GL
 const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
@@ -25,7 +26,7 @@ export default function MapContainer() {
 
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [isCalculating, setIsCalculating] = useState(false)
-  const [reasoning, setReasoning] = useState<string | null>(null)
+  const [reasoning, setReasoning] = useState<RouteReasoningResponse | null>(null)
   const [isLoadingReasoning, setIsLoadingReasoning] = useState(false)
   const [showReasoning, setShowReasoning] = useState(false)
 
@@ -152,6 +153,9 @@ export default function MapContainer() {
       setReasoning(null)
 
       try {
+        // Extract waypoint coordinates from route
+        const waypointCoords = routeResult.coordinates.slice(1, -1) as Array<[number, number]>
+
         const response = await fetch('/api/reasoning', {
           method: 'POST',
           headers: {
@@ -163,6 +167,7 @@ export default function MapContainer() {
             departureCoords: [departure.lon, departure.lat],
             arrivalCoords: [arrival.lon, arrival.lat],
             waypoints: routeResult.waypoints,
+            waypointCoords: waypointCoords,
             distance_nm: routeResult.distance_nm,
             estimated_time_min: routeResult.estimated_time_min,
             route_type: routeResult.type,
