@@ -80,6 +80,17 @@ export default function ReasoningPanel({
   )
 }
 
+function formatWind(metar: { wdir?: number | null; wspd?: number | null; wgst?: number | null }): string {
+  const wspd = metar.wspd ?? 0
+  const wdir = metar.wdir ?? 0
+  if (wspd === 0) return 'Calm'
+  const dir = typeof wdir === 'number' && !Number.isNaN(wdir) ? `${String(wdir).padStart(3, '0')}°` : 'VRB'
+  const gust = typeof metar.wgst === 'number' && !Number.isNaN(metar.wgst) && metar.wgst > wspd
+    ? ` gust ${metar.wgst}`
+    : ''
+  return `${dir} at ${wspd} kt${gust}`
+}
+
 /**
  * Component to display structured reasoning response
  */
@@ -141,6 +152,13 @@ function StructuredReasoningDisplay({
                     <p className="text-xs font-mono text-gray-700 leading-relaxed">
                       {station.metar.rawOb || station.metar.raw_text || 'No data available'}
                     </p>
+                    {/* Wind: explicit display from decoded wdir/wspd */}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-xs text-sky-600 font-medium">Wind:</span>
+                      <span className="text-xs font-mono text-gray-700">
+                        {formatWind(station.metar)}
+                      </span>
+                    </div>
                     {station.metar.flightCategory && (
                       <div className="mt-1">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded ${

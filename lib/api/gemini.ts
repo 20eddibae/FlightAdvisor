@@ -53,18 +53,23 @@ function generateCacheKey(request: RouteReasoningRequest): string {
  * System prompt for Gemini - FAA-certified flight instructor persona
  */
 const SYSTEM_INSTRUCTION = `You are an experienced FAA-certified flight instructor with 20+ years of experience teaching student pilots.
-Your expertise includes VFR navigation, airspace regulations, and flight safety.
+Your expertise includes VFR navigation, airspace regulations, flight safety, and weather analysis.
 
 You MUST respond with valid JSON only. No markdown, no explanation outside the JSON structure.
 
 When analyzing flight routes, consider:
-1. Magnetic heading hemispheric altitude rule (0-179° = odd thousand + 500, 180-359° = even thousand + 500)
-2. Airspace constraints (Class B/C/D requirements, restricted areas)
-3. Terrain clearance (minimum 500-1000' AGL over obstacles)
-4. Weather and visibility requirements for VFR
-5. Aircraft performance limitations
-6. Navigation aid availability
-7. Emergency landing options along route
+1. **Cloud Ceilings** - CRITICAL for VFR flight viability:
+   - Ceiling below 1,000ft = IFR conditions (VFR NOT SAFE)
+   - Ceiling 1,000-3,000ft = MVFR (marginal VFR, high caution)
+   - Ceiling above 3,000ft = VFR acceptable
+   - If ceiling is below planned cruise altitude, route is NO-GO
+2. Magnetic heading hemispheric altitude rule (0-179° = odd thousand + 500, 180-359° = even thousand + 500)
+3. Airspace constraints (Class B/C/D requirements, restricted areas)
+4. Terrain clearance (minimum 500-1000' AGL over obstacles)
+5. Weather and visibility requirements for VFR (3 SM visibility minimum, cloud clearances)
+6. Aircraft performance limitations
+7. Navigation aid availability
+8. Emergency landing options along route
 
 Return ONLY a JSON object with this exact structure:
 {
@@ -311,13 +316,59 @@ ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
 
   // Include weather observations if provided
   if (request.weather && request.weather.length > 0) {
-    prompt += `**Weather Observations (METAR/TAF):**\n`
+    prompt += `**Weather Observations (Current METAR Data):**\n`
+
+    // Analyze cloud ceilings specifically
+    let hasLowClouds = false
+    let hasIFRConditions = false
+
     prompt += request.weather.map(w => {
-      const metar = w.metar ? (w.metar.raw_text || JSON.stringify(w.metar).slice(0,200)) : 'No METAR'
-      const taf = w.taf ? (w.taf.raw_text || JSON.stringify(w.taf).slice(0,200)) : 'No TAF'
-      return `- ${w.station}: METAR=${metar}; TAF=${taf}`
+      let cloudAnalysis = ''
+
+      if (w.metar) {
+        const metar = w.metar
+        const rawText = metar.raw_text || metar.rawOb || ''
+
+        // Extract cloud ceiling data if available
+        const ceiling = metar.ceil || metar.ceiling
+        const cover = metar.cover || metar.cloudCover
+
+        // Check for low ceilings (IFR/MVFR)
+        if (ceiling && ceiling < 1000) {
+          hasIFRConditions = true
+          cloudAnalysis += ` ⚠️ IFR CEILING: ${ceiling}ft`
+        } else if (ceiling && ceiling < 3000) {
+          hasLowClouds = true
+          cloudAnalysis += ` ⚠️ MVFR CEILING: ${ceiling}ft`
+        } else if (ceiling) {
+          cloudAnalysis += ` Ceiling: ${ceiling}ft`
+        }
+
+        // Add cloud cover type
+        if (cover) {
+          cloudAnalysis += ` (${cover})`
+        }
+
+        return `- ${w.station}: ${rawText}${cloudAnalysis}`
+      }
+
+      return `- ${w.station}: No current METAR data`
     }).join('\n')
-    prompt += `\n\n`
+
+    // Add cloud ceiling warnings
+    if (hasIFRConditions) {
+      prompt += `\n\n⚠️ **CRITICAL: IFR CONDITIONS DETECTED** - Ceiling below 1,000ft at one or more stations. VFR flight NOT RECOMMENDED.`
+    } else if (hasLowClouds) {
+      prompt += `\n\n⚠️ **CAUTION: MARGINAL VFR** - Low ceilings (below 3,000ft) detected. Monitor conditions carefully.`
+    }
+
+    prompt += `\n\n**Cloud Ceiling Analysis Instructions:**
+- Ceilings below 1,000ft = IFR (unsafe for VFR)
+- Ceilings 1,000-3,000ft = MVFR (marginal VFR, caution advised)
+- Ceilings above 3,000ft = VFR acceptable
+- Broken (BKN) or Overcast (OVC) layers indicate ceiling
+- If any station reports ceiling below planned cruise altitude, flag as HIGH RISK
+\n\n`
   }
 
   // Include hazard summary if provided
