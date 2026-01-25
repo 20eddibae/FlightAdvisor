@@ -14,14 +14,17 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
   useEffect(() => {
     if (!map || airports.length === 0) return
 
+    // Safety check: ensure map container is available
+    if (!map.getCanvasContainer()) return
+
     const markers: mapboxgl.Marker[] = []
 
     airports.forEach((airport) => {
       // Create custom marker element
       const el = document.createElement('div')
       el.className = 'airport-marker'
-      el.style.width = '24px'
-      el.style.height = '24px'
+      el.style.width = '16px'
+      el.style.height = '16px'
       el.style.borderRadius = '50%'
       el.style.cursor = 'pointer'
 
@@ -33,7 +36,7 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
 
       // Create popup with airport information
       const popup = new mapboxgl.Popup({
-        offset: 25,
+        offset: 18,
         closeButton: false,
       }).setHTML(`
         <div style="padding: 4px;">
@@ -56,18 +59,39 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
         .setPopup(popup)
         .addTo(map)
 
-      // Add label below marker
+      // Create label element that appears on hover
       const labelEl = document.createElement('div')
       labelEl.className = 'airport-label'
-      labelEl.textContent = airport.id
+      labelEl.textContent = airport.name
       labelEl.style.position = 'absolute'
       labelEl.style.fontWeight = 'bold'
-      labelEl.style.fontSize = '12px'
+      labelEl.style.fontSize = '11px'
       labelEl.style.color = isDeparture ? COLORS.DEPARTURE_MARKER : COLORS.ARRIVAL_MARKER
       labelEl.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white'
-      labelEl.style.marginTop = '28px'
-      labelEl.style.marginLeft = '-12px'
+      labelEl.style.marginTop = '20px'
+      labelEl.style.marginLeft = '8px'
+      labelEl.style.transform = 'translateX(-50%)'
+      labelEl.style.whiteSpace = 'nowrap'
       labelEl.style.pointerEvents = 'none'
+      labelEl.style.maxWidth = '200px'
+      labelEl.style.overflow = 'hidden'
+      labelEl.style.textOverflow = 'ellipsis'
+      labelEl.style.display = 'none' // Hidden by default
+      labelEl.style.transition = 'opacity 0.2s ease'
+
+      // Add hover interaction
+      el.addEventListener('mouseenter', () => {
+        labelEl.style.display = 'block'
+        labelEl.style.opacity = '1'
+      })
+
+      el.addEventListener('mouseleave', () => {
+        labelEl.style.opacity = '0'
+        setTimeout(() => {
+          labelEl.style.display = 'none'
+        }, 200) // Match transition duration
+      })
+
       el.appendChild(labelEl)
 
       markers.push(marker)

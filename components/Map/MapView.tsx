@@ -16,6 +16,10 @@ export default function MapView({ onMapLoad }: MapViewProps) {
   const map = useRef<mapboxgl.Map | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  
+  // Store event handlers in refs so they persist across renders
+  const handleLoadRef = useRef<(() => void) | null>(null)
+  const handleErrorRef = useRef<((e: any) => void) | null>(null)
 
   useEffect(() => {
     if (!MAPBOX_TOKEN) {
@@ -50,23 +54,32 @@ export default function MapView({ onMapLoad }: MapViewProps) {
         'bottom-left'
       )
 
-      // Handle load event
-      map.current.on('load', () => {
+      // Create event handlers
+      const handleLoad = () => {
         setIsMapLoaded(true)
         map.current?.resize() // Force resize check
         if (onMapLoad && map.current) {
           onMapLoad(map.current)
         }
-      })
+      }
 
-      // Handle errors
-      map.current.on('error', (e) => {
+      const handleError = (e: any) => {
         console.error('Mapbox error:', e)
         if (!isMapLoaded) {
           // Only set error if we haven't successfully loaded yet
           setLoadError(`Map error: ${e.error?.message || 'Unknown error'}`)
         }
-      })
+      }
+
+      // Store handlers in refs for cleanup
+      handleLoadRef.current = handleLoad
+      handleErrorRef.current = handleError
+
+      // Handle load event
+      map.current.on('load', handleLoad)
+
+      // Handle errors
+      map.current.on('error', handleError)
 
     } catch (err) {
       console.error('Failed to initialize map:', err)
@@ -76,6 +89,17 @@ export default function MapView({ onMapLoad }: MapViewProps) {
     // Cleanup on unmount
     return () => {
       if (map.current) {
+        // Remove event listeners before destroying map
+        try {
+          if (handleLoadRef.current) {
+            map.current.off('load', handleLoadRef.current)
+          }
+          if (handleErrorRef.current) {
+            map.current.off('error', handleErrorRef.current)
+          }
+        } catch (e) {
+          // Ignore errors if map is already destroyed
+        }
         map.current.remove()
         map.current = null
       }

@@ -32,58 +32,6 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
     const fillLayerId = 'airspace-fill'
     const outlineLayerId = 'airspace-outline'
 
-    // Add GeoJSON source
-    if (!map.getSource(sourceId)) {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: airspace,
-      })
-    }
-
-    // Add fill layer for airspace polygons
-    if (!map.getLayer(fillLayerId)) {
-      map.addLayer({
-        id: fillLayerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': [
-            'match',
-            ['get', 'type'],
-            'CLASS_B',
-            COLORS.CLASS_B_FILL,
-            'RESTRICTED',
-            COLORS.RESTRICTED_FILL,
-            COLORS.RESTRICTED_FILL, // default
-          ],
-          'fill-opacity': 0.6,
-        },
-      })
-    }
-
-    // Add outline layer for airspace polygons
-    if (!map.getLayer(outlineLayerId)) {
-      map.addLayer({
-        id: outlineLayerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': [
-            'match',
-            ['get', 'type'],
-            'CLASS_B',
-            COLORS.CLASS_B_STROKE,
-            'RESTRICTED',
-            COLORS.RESTRICTED_STROKE,
-            COLORS.RESTRICTED_STROKE, // default
-          ],
-          'line-width': 2,
-          'line-dasharray': [2, 2],
-        },
-      })
-    }
-
-    // Add hover effect
     const handleMouseMove = (e: mapboxgl.MapLayerMouseEvent) => {
       // Safety check: ensure map and style are still valid
       if (!map || !map.getStyle()) return;
@@ -104,7 +52,9 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
             ? Number(props.ceiling_msl).toLocaleString()
             : 'N/A';
 
-          const type = props.type ? props.type.replace('_', ' ') : 'Unknown';
+          const type = props.type && typeof props.type === 'string'
+            ? props.type.replace('_', ' ')
+            : 'Unknown';
           const name = props.name || 'Unknown Airspace';
 
           popupRef.current
@@ -134,8 +84,70 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
       popupRef.current?.remove()
     }
 
-    map.on('mousemove', fillLayerId, handleMouseMove)
-    map.on('mouseleave', fillLayerId, handleMouseLeave)
+    const addLayers = () => {
+      // Add GeoJSON source
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: airspace,
+        })
+      }
+
+      // Add fill layer for airspace polygons
+      if (!map.getLayer(fillLayerId)) {
+        map.addLayer({
+          id: fillLayerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': [
+              'match',
+              ['get', 'type'],
+              'CLASS_B',
+              COLORS.CLASS_B_FILL,
+              'RESTRICTED',
+              COLORS.RESTRICTED_FILL,
+              COLORS.RESTRICTED_FILL, // default
+            ],
+            'fill-opacity': 0.6,
+          },
+        })
+      }
+
+      // Add outline layer for airspace polygons
+      if (!map.getLayer(outlineLayerId)) {
+        map.addLayer({
+          id: outlineLayerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': [
+              'match',
+              ['get', 'type'],
+              'CLASS_B',
+              COLORS.CLASS_B_STROKE,
+              'RESTRICTED',
+              COLORS.RESTRICTED_STROKE,
+              COLORS.RESTRICTED_STROKE, // default
+            ],
+            'line-width': 2,
+            'line-dasharray': [2, 2],
+          },
+        })
+      }
+
+      // Add hover effects
+      map.on('mousemove', fillLayerId, handleMouseMove)
+      map.on('mouseleave', fillLayerId, handleMouseLeave)
+    }
+
+    // Check if map style is loaded
+    if (map.isStyleLoaded()) {
+      addLayers()
+    } else {
+      // Use once() - it automatically removes itself after firing
+      map.once('load', addLayers)
+    }
 
     // Cleanup on unmount
     return () => {

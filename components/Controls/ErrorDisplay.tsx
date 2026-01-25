@@ -17,8 +17,8 @@ export default function ErrorDisplay({
   onDismiss,
 }: ErrorDisplayProps) {
   return (
-    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-96 z-20">
-      <Alert variant="destructive">
+    <div className="absolute top-4  left-1/2 transform -translate-x-1/2 w-96 z-20">
+      <Alert className='bg-white' variant="destructive">
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           <p className="mb-3">{message}</p>
