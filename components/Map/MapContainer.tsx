@@ -39,6 +39,8 @@ export default function MapContainer() {
   }
 
   const [route, setRoute] = useState<RouteResult | null>(null)
+  const [currentDeparture, setCurrentDeparture] = useState<string>('')
+  const [currentArrival, setCurrentArrival] = useState<string>('')
   const [isCalculating, setIsCalculating] = useState(false)
   const [reasoning, setReasoning] = useState<RouteReasoningResponse | null>(null)
   const [isLoadingReasoning, setIsLoadingReasoning] = useState(false)
@@ -658,12 +660,13 @@ export default function MapContainer() {
       }
 
       setRoute(routeResult)
-      setCurrentDepartureId(departureCode)
-      setCurrentDestinationId(destinationCode)
+      setCurrentDeparture(departure.id)
+      setCurrentArrival(arrival.id)
 
       // Fetch reasoning from API
       setIsLoadingReasoning(true)
       setReasoning(null)
+      setWeather([]) // Initialize weather as empty array while loading
 
       try {
         // Extract waypoint coordinates from route
@@ -679,10 +682,16 @@ export default function MapContainer() {
         const bounds = `${minLon},${minLat},${maxLon},${maxLat}`
 
         // Fetch weather (METAR/TAF for departure & arrival) and hazards in parallel
-        const weatherIds = [departure.id, arrival.id].join(',')
+        // Only include airports with valid ICAO codes (K followed by 3 letters for US airports)
+        const validAirportIds = [departure.id, arrival.id].filter(id =>
+          /^K[A-Z]{3}$/.test(id) || /^[A-Z]{4}$/.test(id)  // ICAO format
+        )
+        const weatherIds = validAirportIds.join(',')
 
         const [weatherRes, hazardsRes] = await Promise.all([
-          fetch(`/api/weather?ids=${encodeURIComponent(weatherIds)}`),
+          validAirportIds.length > 0
+            ? fetch(`/api/weather?ids=${encodeURIComponent(weatherIds)}`)
+            : Promise.resolve({ ok: false } as Response),
           fetch(`/api/hazards?bounds=${encodeURIComponent(bounds)}`),
         ])
 
@@ -692,13 +701,22 @@ export default function MapContainer() {
         if (weatherRes && weatherRes.ok) {
           try {
             weatherData = await weatherRes.json()
+            console.log('✅ Weather API response:', weatherData)
             // Store weather data in state for the reasoning panel
-            if (weatherData?.stations) {
+            if (weatherData?.stations && weatherData.stations.length > 0) {
+              console.log('📍 Setting weather state with', weatherData.stations.length, 'stations')
               setWeather(weatherData.stations)
+            } else {
+              console.warn('⚠️ Weather API returned no stations')
+              setWeather([]) // Set empty array instead of leaving undefined
             }
           } catch (e) {
-            console.warn('Failed parsing weather response', e)
+            console.error('Failed parsing weather response', e)
+            setWeather([]) // Set empty array on error
           }
+        } else {
+          console.warn('⚠️ Weather API request failed or no valid airport IDs')
+          setWeather([]) // Set empty array if request failed
         }
 
         if (hazardsRes && hazardsRes.ok) {
@@ -755,10 +773,11 @@ export default function MapContainer() {
 
   const handleClearRoute = useCallback(() => {
     setRoute(null)
+    setCurrentDeparture('')
+    setCurrentArrival('')
     setReasoning(null)
     setShowReasoning(false)
-    setCurrentDepartureId(undefined)
-    setCurrentDestinationId(undefined)
+    setWeather(undefined)
   }, [])
 
   const handleToggleReasoning = useCallback(() => {
@@ -816,6 +835,12 @@ export default function MapContainer() {
         isVisible={showReasoning}
         onToggle={handleToggleReasoning}
         weather={weather}
+        route={route && currentDeparture && currentArrival ? {
+          departure: currentDeparture,
+          arrival: currentArrival,
+          distance_nm: route.distance_nm,
+          estimated_time_min: route.estimated_time_min,
+        } : undefined}
       />
 
       <CacheStatus />

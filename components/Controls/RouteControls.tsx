@@ -165,12 +165,6 @@ export default function RouteControls({
             Clear
           </Button>
         </div>
-
-        {/* Demo Information */}
-        <div className="text-xs text-muted-foreground pt-2 border-t">
-          <p className="font-medium mb-1">Available Airports:</p>
-          <p>KSQL (San Carlos), KSMF (Sacramento Executive)</p>
-        </div>
         </CardContent>
       )}
     </Card>
