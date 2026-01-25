@@ -17,31 +17,30 @@ export default function ReasoningPanel({
   isVisible,
   onToggle,
 }: ReasoningPanelProps) {
-  if (!isVisible && !reasoning && !isLoading) {
-    return null
-  }
-
   return (
-    <>
-      {/* Toggle Button */}
-      <Button
-        onClick={onToggle}
-        className="absolute top-4 right-4 z-20"
-        variant={isVisible ? 'secondary' : 'default'}
-      >
-        {isVisible ? 'Hide' : 'Show'} Reasoning
-      </Button>
-
-      {/* Reasoning Panel */}
-      {isVisible && (
-        <Card className="absolute top-16 right-4 bottom-4 bg-white w-96 shadow-lg z-10 overflow-hidden flex flex-col">
-          <CardHeader className="pb-3">
+    <Card className="absolute top-0 right-0 z-10 bg-white shadow-lg w-96 max-h-[calc(100vh-2rem)] flex flex-col rounded-none">
+      <CardHeader className="cursor-pointer" onClick={onToggle}>
+        <div className="flex items-center justify-between">
+          <div>
             <CardTitle className="text-lg">Route Reasoning</CardTitle>
             <p className="text-xs text-muted-foreground">
               AI-generated flight instructor analysis
             </p>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto">
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+          >
+            <span className={`text-lg transition-transform rotate-90 duration-200 ${isVisible ? '' : 'rotate-270'}`}>
+              ›
+            </span>
+          </Button>
+        </div>
+      </CardHeader>
+
+      {isVisible && (
+        <CardContent className="flex-1 overflow-y-auto">
             {isLoading && (
               <div className="flex flex-col items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
@@ -69,10 +68,9 @@ export default function ReasoningPanel({
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+        </CardContent>
       )}
-    </>
+    </Card>
   )
 }
 

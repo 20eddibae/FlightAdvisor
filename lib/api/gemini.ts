@@ -96,15 +96,6 @@ function calculateMagneticHeading(
  * Calculate appropriate VFR cruise altitude based on magnetic heading
  * Hemispheric rule: 0-179° = odd thousands + 500, 180-359° = even thousands + 500
  */
-function calculateCruiseAltitude(avgMagHeading: number): number {
-  if (avgMagHeading >= 0 && avgMagHeading < 180) {
-    // Eastbound: odd thousands + 500
-    return 5500 // 5,500 ft MSL
-  } else {
-    // Westbound: even thousands + 500
-    return 6500 // 6,500 ft MSL
-  }
-}
 
 /**
  * Generate route reasoning using Gemini 3 Thinking API
@@ -123,12 +114,11 @@ export async function generateRouteReasoning(
   const magHeadings = calculateMagneticHeadings(request)
   const avgHeading =
     magHeadings.reduce((sum, h) => sum + h, 0) / magHeadings.length
-  const cruiseAltitude = calculateCruiseAltitude(avgHeading)
 
   // Check if API key is available
   if (!GEMINI_API_KEY) {
     console.warn('Gemini API key not found, using fallback reasoning')
-    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+    return generateFallbackReasoning(request, magHeadings)
   }
 
   try {
@@ -142,7 +132,7 @@ export async function generateRouteReasoning(
     })
 
     // Build the prompt
-    const prompt = buildPrompt(request, magHeadings, cruiseAltitude)
+    const prompt = buildPrompt(request, magHeadings)
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -166,7 +156,7 @@ export async function generateRouteReasoning(
       parsedResponse = JSON.parse(jsonText)
     } catch (parseError) {
       console.error('Failed to parse Gemini JSON response:', parseError)
-      return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+      return generateFallbackReasoning(request, magHeadings)
     }
 
     // Cache the result
@@ -183,7 +173,7 @@ export async function generateRouteReasoning(
   } catch (error) {
     console.error('Gemini API error:', error)
     // Fall back to pre-written reasoning
-    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+    return generateFallbackReasoning(request, magHeadings)
   }
 }
 
@@ -217,7 +207,6 @@ function calculateMagneticHeadings(request: RouteReasoningRequest): number[] {
 function generateFallbackReasoning(
   request: RouteReasoningRequest,
   magHeadings: number[],
-  cruiseAltitude: number
 ): RouteReasoningResponse {
   const segmentAnalysis: string[] = []
 
@@ -262,7 +251,6 @@ function generateFallbackReasoning(
 function buildPrompt(
   request: RouteReasoningRequest,
   magHeadings: number[],
-  cruiseAltitude: number
 ): string {
   const {
     departure,
@@ -284,7 +272,7 @@ function buildPrompt(
 - Estimated Time: ${estimated_time_min} minutes (assuming 120 knots groundspeed)
 - Route Type: ${route_type === 'direct' ? 'Direct Route' : 'Routing to Avoid Airspace'}
 - Calculated Magnetic Headings: ${magHeadings.join('°, ')}°
-- Recommended Cruise Altitude: ${cruiseAltitude}' MSL (hemispheric rule)
+- Recommended Cruise Altitude: follow MSL (hemispheric rule)
 
 `
 
@@ -312,7 +300,7 @@ Analyze this route for safety and provide a go/no-go recommendation. Consider:
 
 Return ONLY this JSON structure (no other text):
 {
-  "Altitude": ${cruiseAltitude},
+  "Altitude": INT,
   "Issues": "string - describe potential problems: terrain, airspace, weather, navigation challenges",
   "Segment_Analysis": [
     "Segment 1: ${departure} to ${waypoints[0] || arrival} - describe terrain, climb requirements, airspace",

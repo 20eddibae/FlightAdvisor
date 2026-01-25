@@ -238,7 +238,7 @@ export default function MapContainer() {
         onClearRoute={handleClearRoute}
         isCalculating={isCalculating}
         routeInfo={route ? {
-          distance_nm: route.distance_nm,
+          distance_nm: Math.round(route.distance_nm),
           estimated_time_min: route.estimated_time_min,
           type: route.type,
         } : null}

@@ -25,17 +25,34 @@ export default function RouteControls({
 }: RouteControlsProps) {
   const [departure, setDeparture] = useState('KSQL')
   const [destination, setDestination] = useState('KSMF')
+  const [isVisible, setIsVisible] = useState(true)
 
   const handlePlanRoute = () => {
     onPlanRoute(departure.trim().toUpperCase(), destination.trim().toUpperCase())
   }
+
   return (
-    <Card className="absolute top-4 left-4 bg-white shadow-lg z-10">
-      <CardHeader>
-        <CardTitle className="text-lg">FlightAdvisor</CardTitle>
-        <CardDescription>AI-Powered Flight Planning</CardDescription>
+    <Card className="absolute w-80 top-4 left-4 z-10 bg-white shadow-lg">
+      <CardHeader className="cursor-pointer" onClick={() => setIsVisible(!isVisible)}>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-lg">FlightAdvisor</CardTitle>
+            <CardDescription>AI-Powered Flight Planning</CardDescription>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+          >
+            <span className={`text-lg transition-transform rotate-90 duration-200 ${isVisible ? '' : 'rotate-270'}`}>
+              ›
+            </span>
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+
+      {isVisible && (
+        <CardContent className="space-y-4">
         {/* Route Information */}
         {routeInfo && (
           <div className="p-3 bg-secondary rounded-md space-y-2">
@@ -117,7 +134,8 @@ export default function RouteControls({
           <p className="font-medium mb-1">Available Airports:</p>
           <p>KSQL (San Carlos), KSMF (Sacramento Executive)</p>
         </div>
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   )
 }
