@@ -85,7 +85,7 @@ export const CACHE_CONFIG = {
   SPATIAL_GRID_CELL_SIZE: 0.5,           // Degrees (~35 miles at mid-latitudes)
   MAX_SEARCH_RESULTS: 50,
   SEARCH_DEBOUNCE_MS: 150,
-  DB_NAME: 'FlightAdvisorCache',
+  DB_NAME: 'SkyrisCache',
   DB_VERSION: 1,
   BULK_FETCH_LIMIT: 500,                 // Max airports per API call
 }

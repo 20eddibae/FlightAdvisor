@@ -3,7 +3,7 @@ import './globals.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 export const metadata: Metadata = {
-  title: 'FlightAdvisor - AI-Powered Flight Planning',
+  title: 'Skyris - AI-Powered Flight Planning',
   description: 'Intelligent flight planning with agentic AI reasoning for optimal routes',
 }
 

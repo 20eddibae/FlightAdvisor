@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabase } from '@/lib/supabase/client'
 
 /**
  * POST /api/watch-route
@@ -17,6 +17,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const supabase = getSupabase()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Supabase not configured' },
+        { status: 503 }
+      )
+    }
     const { data, error } = await supabase
       .from('watched_flights')
       .insert({

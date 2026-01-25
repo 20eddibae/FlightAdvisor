@@ -1,4 +1,4 @@
-# FlightAdvisor
+# Skyris
 
 An intelligent flight planning tool that uses AI reasoning to analyze airspace restrictions, weather conditions, and navigation waypoints to recommend optimal flight paths with transparent explanations.
 
@@ -115,7 +115,7 @@ npm start
 
 ## Demo Script (90 seconds)
 
-1. **[0:00-0:15]** Introduction: "FlightAdvisor explains WHY routes are safe"
+1. **[0:00-0:15]** Introduction: "Skyris explains WHY routes are safe"
 2. **[0:15-0:30]** Show map with airports, waypoints, and airspace
 3. **[0:30-0:50]** Click "Plan Route" - watch route avoid Class B
 4. **[0:50-1:15]** Display AI reasoning panel - educational explanations
@@ -151,13 +151,24 @@ Generate AI reasoning for a flight route.
 
 ## Deployment
 
-### Vercel (Recommended)
+### Vercel (using .env.local)
 
-1. Install Vercel CLI: \`npm i -g vercel\`
-2. Deploy: \`vercel --prod\`
-3. Set environment variables in Vercel dashboard:
-   - \`NEXT_PUBLIC_MAPBOX_TOKEN\`
-   - \`GEMINI_API_KEY\`
+1. Add to `.env.local`:
+   ```
+   VERCEL_TOKEN=your_token_from_vercel_dashboard
+   ```
+   Create a token at [Vercel → Settings → Tokens](https://vercel.com/account/tokens).
+
+2. Install deps and deploy:
+   ```bash
+   npm install
+   npm run deploy
+   ```
+   The deploy script loads `VERCEL_TOKEN` from `.env.local` and runs `vercel --prod`.
+
+3. Set environment variables in the Vercel project dashboard:
+   - `NEXT_PUBLIC_MAPBOX_TOKEN`
+   - `GEMINI_API_KEY`
 
 ## Key Design Decisions
 

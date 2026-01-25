@@ -60,7 +60,7 @@ export default function SavedFlightsPanel({ onLoadFlight }: SavedFlightsPanelPro
   }, [])
 
   useEffect(() => {
-    const savedEmail = localStorage.getItem('flightadvisor_pilot_email')
+    const savedEmail = localStorage.getItem('skyris_pilot_email')
     if (savedEmail) {
       setEmail(savedEmail)
       fetchFlights(savedEmail)
@@ -215,7 +215,7 @@ export default function SavedFlightsPanel({ onLoadFlight }: SavedFlightsPanelPro
             </div>
             <Button
               onClick={() => {
-                localStorage.setItem('flightadvisor_pilot_email', email)
+                localStorage.setItem('skyris_pilot_email', email)
                 fetchFlights(email)
               }}
               disabled={loading || !email}

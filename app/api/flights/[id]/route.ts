@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabase } from '@/lib/supabase/client'
 
 /**
  * GET /api/flights/[id]
@@ -11,7 +11,13 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-
+    const supabase = getSupabase()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Supabase not configured' },
+        { status: 503 }
+      )
+    }
     const { data, error } = await supabase
       .from('watched_flights')
       .select('*')
@@ -67,6 +73,13 @@ export async function PATCH(
     if (body.alert_acknowledged !== undefined) updateData.alert_acknowledged = body.alert_acknowledged
     if (body.is_active !== undefined) updateData.is_active = body.is_active
 
+    const supabase = getSupabase()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Supabase not configured' },
+        { status: 503 }
+      )
+    }
     const { data, error } = await supabase
       .from('watched_flights')
       .update(updateData)
@@ -102,7 +115,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-
+    const supabase = getSupabase()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: 'Supabase not configured' },
+        { status: 503 }
+      )
+    }
     const { error } = await supabase
       .from('watched_flights')
       .delete()

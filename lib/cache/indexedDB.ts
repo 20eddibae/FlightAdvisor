@@ -5,7 +5,7 @@
 
 import type { RegionCache, CacheMetadata } from './types';
 
-const DB_NAME = 'FlightAdvisorCache';
+const DB_NAME = 'SkyrisCache';
 const DB_VERSION = 1;
 const STORE_REGIONS = 'regions';
 const STORE_METADATA = 'metadata';

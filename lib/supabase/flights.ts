@@ -1,4 +1,4 @@
-import { supabase, SavedFlight } from './client'
+import { getSupabase, SavedFlight } from './client'
 
 export type { SavedFlight }
 
@@ -6,6 +6,11 @@ export type { SavedFlight }
  * Fetch all saved flights from Supabase
  */
 export async function getAllFlights(): Promise<SavedFlight[]> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    console.warn('Supabase not configured - returning empty flights list')
+    return []
+  }
   const { data, error } = await supabase
     .from('flights')
     .select('*')
@@ -23,6 +28,8 @@ export async function getAllFlights(): Promise<SavedFlight[]> {
  * Get a single flight by ID
  */
 export async function getFlightById(id: string): Promise<SavedFlight | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
   const { data, error } = await supabase
     .from('flights')
     .select('*')
@@ -41,6 +48,11 @@ export async function getFlightById(id: string): Promise<SavedFlight | null> {
  * Save a new flight to Supabase
  */
 export async function saveFlight(flight: Omit<SavedFlight, 'id' | 'created_at' | 'updated_at'>): Promise<SavedFlight | null> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    console.warn('Supabase not configured - cannot save flight')
+    return null
+  }
   const { data, error } = await supabase
     .from('flights')
     .insert([flight])
@@ -59,6 +71,11 @@ export async function saveFlight(flight: Omit<SavedFlight, 'id' | 'created_at' |
  * Update an existing flight
  */
 export async function updateFlight(id: string, updates: Partial<Omit<SavedFlight, 'id' | 'created_at'>>): Promise<SavedFlight | null> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    console.warn('Supabase not configured - cannot update flight')
+    return null
+  }
   const { data, error } = await supabase
     .from('flights')
     .update(updates)
@@ -78,6 +95,11 @@ export async function updateFlight(id: string, updates: Partial<Omit<SavedFlight
  * Delete a flight by ID
  */
 export async function deleteFlight(id: string): Promise<boolean> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    console.warn('Supabase not configured - cannot delete flight')
+    return false
+  }
   const { error } = await supabase
     .from('flights')
     .delete()

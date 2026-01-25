@@ -77,8 +77,8 @@ export default function SaveFlightButton({
       console.log('Flight saved successfully:', data.flight?.id)
       setSaved(true)
       // Store email in localStorage for easy retrieval
-      localStorage.setItem('flightadvisor_pilot_email', email)
-      if (name) localStorage.setItem('flightadvisor_pilot_name', name)
+      localStorage.setItem('skyris_pilot_email', email)
+      if (name) localStorage.setItem('skyris_pilot_name', name)
     } catch (err) {
       console.error('Save flight error:', err)
       setError(err instanceof Error ? err.message : 'Failed to save flight')
@@ -102,8 +102,8 @@ export default function SaveFlightButton({
 
   // Load saved email/name from localStorage on mount
   const handleOpen = () => {
-    const savedEmail = localStorage.getItem('flightadvisor_pilot_email')
-    const savedName = localStorage.getItem('flightadvisor_pilot_name')
+    const savedEmail = localStorage.getItem('skyris_pilot_email')
+    const savedName = localStorage.getItem('skyris_pilot_name')
     if (savedEmail) setEmail(savedEmail)
     if (savedName) setName(savedName)
     setIsOpen(true)

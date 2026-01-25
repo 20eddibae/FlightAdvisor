@@ -1,15 +1,27 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+let _client: SupabaseClient | null = null
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase URL:', supabaseUrl ? 'set' : 'missing')
-  console.error('Supabase Key:', supabaseAnonKey ? 'set' : 'missing')
-  throw new Error('Missing Supabase environment variables')
+/**
+ * Lazily initialized Supabase client. Never throws at module load (build-safe).
+ * Returns null if env vars are missing (graceful degradation).
+ */
+export function getSupabase(): SupabaseClient | null {
+  if (_client) return _client
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) {
+    if (typeof window !== 'undefined') {
+      // Only log in browser (not during SSR/build)
+      console.warn('Supabase not configured - flight saving disabled')
+      console.warn('Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel')
+    }
+    return null
+  }
+  _client = createClient(url, key)
+  return _client
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Database types
 export interface SavedFlight {
