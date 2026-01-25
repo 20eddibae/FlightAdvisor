@@ -10,6 +10,7 @@ import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
 import { US_REGIONS } from '@/lib/constants'
+import type { RouteReasoningResponse } from '@/lib/api/gemini'
 
 // Dynamically import map layers to avoid SSR issues with Mapbox GL
 const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
@@ -36,6 +37,8 @@ export default function MapContainer() {
     try {
       // Get current viewport bounds
       const bounds = mapInstance.getBounds()
+      if (!bounds) return
+
       const sw = bounds.getSouthWest()
       const ne = bounds.getNorthEast()
       const bbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`
@@ -112,7 +115,7 @@ export default function MapContainer() {
     })
   }, [loadDataForViewport])
 
-  const handlePlanRoute = useCallback(async () => {
+  const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string) => {
     // Clear any previous errors
     setError(null)
 
@@ -135,7 +138,7 @@ export default function MapContainer() {
       if (!departure || !arrival) {
         setError({
           title: 'Airport Not Found',
-          message: `Could not find ${!departure ? departureCode : destinationCode} airport in the data. Please check the airport code.`,
+          message: `Could not find ${!departure ? departureCode : destinationCode} airport in the current map view. Try zooming out or moving the map to that region.`,
         })
         setIsCalculating(false)
         return
