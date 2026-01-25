@@ -73,7 +73,7 @@ npm start
 
 ## Usage
 
-1. **View the Map**: The application loads with San Carlos (KSQL) and Sacramento (KSMF) airports marked
+1. **View Map**: The application loads with San Carlos (KSQL) and Sacramento (KSMF) airports marked
 2. **Click "Plan Route"**: Calculates optimal route avoiding SFO Class B airspace
 3. **View Reasoning**: AI explains WHY each routing decision was made
 4. **Explore Airspace**: Hover over gray airspace zones to see details
