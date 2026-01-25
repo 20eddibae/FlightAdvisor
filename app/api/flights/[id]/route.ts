@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 /**
  * GET /api/flights/[id]
@@ -11,7 +11,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = getSupabase()
+    const supabase = getSupabaseAdmin()
     if (!supabase) {
       return NextResponse.json(
         { error: 'Supabase not configured' },
@@ -73,7 +73,7 @@ export async function PATCH(
     if (body.alert_acknowledged !== undefined) updateData.alert_acknowledged = body.alert_acknowledged
     if (body.is_active !== undefined) updateData.is_active = body.is_active
 
-    const supabase = getSupabase()
+    const supabase = getSupabaseAdmin()
     if (!supabase) {
       return NextResponse.json(
         { error: 'Supabase not configured' },
@@ -115,7 +115,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = getSupabase()
+    const supabase = getSupabaseAdmin()
     if (!supabase) {
       return NextResponse.json(
         { error: 'Supabase not configured' },

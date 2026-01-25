@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 let _client: SupabaseClient | null = null
+let _adminClient: SupabaseClient | null = null
 
 /**
- * Lazily initialized Supabase client. Never throws at module load (build-safe).
+ * Client-side Supabase client using anon key.
  * Returns null if env vars are missing (graceful degradation).
  */
 export function getSupabase(): SupabaseClient | null {
@@ -12,7 +13,6 @@ export function getSupabase(): SupabaseClient | null {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !key) {
     if (typeof window !== 'undefined') {
-      // Only log in browser (not during SSR/build)
       console.warn('Supabase not configured - flight saving disabled')
       console.warn('Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel')
     }
@@ -20,6 +20,24 @@ export function getSupabase(): SupabaseClient | null {
   }
   _client = createClient(url, key)
   return _client
+}
+
+/**
+ * Server-side Supabase client using service role key.
+ * Use this in API routes for admin operations that bypass RLS.
+ * Returns null if env vars are missing (graceful degradation).
+ */
+export function getSupabaseAdmin(): SupabaseClient | null {
+  if (_adminClient) return _adminClient
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    console.warn('Supabase admin not configured - server operations disabled')
+    console.warn('Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY')
+    return null
+  }
+  _adminClient = createClient(url, key)
+  return _adminClient
 }
 
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +33,27 @@ export default function SaveFlightButton({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Debug: Log component render
+  console.log('💙 SaveFlightButton rendering:', {
+    disabled,
+    departure,
+    arrival,
+    hasRoute: !!routeData,
+    isOpen
+  })
+
+  // Auto-close modal on first render if stuck open
+  useEffect(() => {
+    if (isOpen && disabled) {
+      console.log('⚠️ Modal was stuck open while disabled - closing it')
+      setIsOpen(false)
+    }
+  }, [])
+
   const handleSave = async () => {
+    console.log('🔵 SAVE BUTTON CLICKED')
+    console.log('Email:', email, 'Date:', flightDate)
+
     if (!email || !flightDate) {
       setError('Please fill in all required fields')
       return
@@ -59,7 +79,7 @@ export default function SaveFlightButton({
         baseline_weather: weather,
       }
 
-      console.log('Saving flight to Supabase:', payload)
+      console.log('📤 Sending payload to /api/watch-route:', payload)
 
       const response = await fetch('/api/watch-route', {
         method: 'POST',
@@ -67,8 +87,9 @@ export default function SaveFlightButton({
         body: JSON.stringify(payload),
       })
 
+      console.log('📥 Response status:', response.status)
       const data = await response.json()
-      console.log('API response:', response.status, data)
+      console.log('📥 Response data:', data)
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to save flight')
@@ -93,7 +114,7 @@ export default function SaveFlightButton({
     setTimeout(() => {
       if (saved) {
         setSaved(false)
-        setEmail('')
+        // Only clear flight date, keep email/name for next save
         setFlightDate('')
       }
       setError(null)
@@ -111,33 +132,44 @@ export default function SaveFlightButton({
 
   if (!isOpen) {
     return (
-      <Button
-        onClick={handleOpen}
-        disabled={disabled}
-        variant="outline"
-        className="fixed bottom-20 left-4 z-20 gap-2 bg-white shadow-md"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <div className="fixed bottom-20 left-4 z-[100]">
+        <Button
+          onClick={(e) => {
+            console.log('🔵 Watch Flight button clicked, disabled:', disabled)
+            if (disabled) {
+              console.log('⚠️ Button is disabled - you need to plan a route first!')
+              e.preventDefault()
+              return
+            }
+            handleOpen()
+          }}
+          disabled={disabled}
+          variant="outline"
+          className="gap-2 bg-blue-600 text-white border-blue-700 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all disabled:bg-gray-300 disabled:text-gray-500 disabled:border-gray-400"
+          title={disabled ? "⚠️ Plan a route first before watching a flight" : "Save and monitor this flight"}
         >
-          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
-        Watch Flight
-      </Button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          Watch Flight
+        </Button>
+      </div>
     )
   }
 
   return (
-    <Card className="absolute top-4 right-4 z-20 w-80 bg-white shadow-lg">
+    <Card className="absolute top-4 left-1/2 -translate-x-1/2 z-[200] w-80 bg-white shadow-2xl border-4 border-blue-500">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
@@ -177,6 +209,11 @@ export default function SaveFlightButton({
             <p className="text-sm text-muted-foreground mt-1">
               You'll get an email at <strong>{email}</strong> if weather conditions change.
             </p>
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs text-blue-700">
+                💡 <strong>Tip:</strong> Plan another route and click "Watch Flight" again to save multiple flights
+              </p>
+            </div>
             <Button onClick={handleClose} className="mt-4" size="sm">
               Close
             </Button>
@@ -236,7 +273,10 @@ export default function SaveFlightButton({
 
             <div className="flex gap-2">
               <Button
-                onClick={handleSave}
+                onClick={() => {
+                  console.log('🟡 BUTTON CLICKED - handleSave about to fire')
+                  handleSave()
+                }}
                 disabled={saving || !email || !flightDate}
                 className="flex-1"
               >
