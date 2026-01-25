@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 /**
  * GET /api/flights?email=pilot@example.com
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    const supabase = getSupabase()
+    const supabase = getSupabaseAdmin()
     if (!supabase) {
       return NextResponse.json(
         { error: 'Supabase not configured' },

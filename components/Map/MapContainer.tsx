@@ -8,6 +8,7 @@ import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
 import { CacheStatus } from '../Controls/CacheStatus'
 import FlightSelector from '../Controls/FlightSelector'
+import SaveFlightButton from '../Controls/SaveFlightButton'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { simplifyAirspace } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
@@ -1322,6 +1323,16 @@ export default function MapContainer() {
         } : undefined}
         onLoadFlight={handleLoadFlight}
         onNewRoute={handleNewRoute}
+      />
+
+      <SaveFlightButton
+        departure={currentDeparture}
+        arrival={currentArrival}
+        departureName={airports.find(a => a.id === currentDeparture)?.name}
+        arrivalName={airports.find(a => a.id === currentArrival)?.name}
+        routeData={currentRoute}
+        weather={weather}
+        disabled={!currentRoute || !currentDeparture || !currentArrival}
       />
 
       <CacheStatus />
