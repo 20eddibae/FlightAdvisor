@@ -79,7 +79,8 @@ npm start
 4. **Explore Airspace**: Hover over gray airspace zones to see details
 5. **Click Markers**: View airport and waypoint information
 
-## Project Structure
+## Project Directory Structure
+
 
 \`\`\`
 /app                    - Next.js App Router pages
