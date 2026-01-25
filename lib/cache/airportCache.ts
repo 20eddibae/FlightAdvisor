@@ -126,14 +126,53 @@ export class AirportCacheManager {
         console.warn('IndexedDB not available, cache will not persist');
       }
 
+      // Preload CRITICAL regions for major airports (BOS, LAX, KSMF, etc.)
+      // Load West Coast, Northeast, Southeast in parallel
+      const criticalRegions = ['West Coast', 'Northeast', 'Southeast'];
+      console.log(`Pre-loading critical regions: ${criticalRegions.join(', ')}...`);
+
+      await Promise.all(
+        criticalRegions.map(region =>
+          this.loadRegion(region).catch(err => {
+            console.warn(`Failed to pre-load ${region}:`, err.message);
+          })
+        )
+      );
+
+      const totalAirports = this.getAllAirports().length;
+      console.log(`✓ Critical regions loaded (${totalAirports} airports cached)`);
+
+      // Validate major airports are present
+      const majorAirports = ['KBOS', 'KLAX', 'KJFK', 'KORD', 'KSMF', 'KSFO'];
+      const missing = majorAirports.filter(id => !this.getAirportById(id));
+      if (missing.length > 0) {
+        console.warn(`⚠️  Major airports missing from cache: ${missing.join(', ')}`);
+      } else {
+        console.log(`✓ All major test airports present in cache`);
+      }
+
+      // Mark as initialized AFTER critical regions load
+      // This ensures search is only enabled when major airports are available
       this.initialized = true;
       this.metadata.lastUpdated = Date.now();
 
-      // Preload West Coast region for demo airports (KSQL, KSMF)
-      // Do this in the background, don't wait for it
-      this.loadRegion('West Coast').catch(err => {
-        console.warn('Failed to preload West Coast region:', err);
-      });
+      // Load remaining regions in background (low priority)
+      const remainingRegions = US_REGIONS
+        .map(r => r.name)
+        .filter(name => !criticalRegions.includes(name));
+
+      if (remainingRegions.length > 0) {
+        console.log(`Loading remaining ${remainingRegions.length} regions in background...`);
+        Promise.all(
+          remainingRegions.map(region =>
+            this.loadRegion(region).catch(err => {
+              console.warn(`Background load failed for ${region}:`, err.message);
+            })
+          )
+        ).then(() => {
+          console.log(`✓ All ${US_REGIONS.length} US regions loaded`);
+        });
+      }
     } catch (error) {
       console.error('Failed to initialize cache:', error);
       // Continue without cache - degrade gracefully

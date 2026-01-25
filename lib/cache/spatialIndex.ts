@@ -126,10 +126,18 @@ export class AirportSpatialIndex {
     if (!query.trim()) return [];
 
     const lowerQuery = query.toLowerCase().trim();
+    const upperQuery = query.toUpperCase().trim();
     const results: CachedAirport[] = [];
 
-    // Fast path: exact ICAO match
-    const exactMatch = this.airports.get(query.toUpperCase());
+    // Fast path: exact ICAO match (handles both "KBOS" and "BOS")
+    let exactMatch = this.airports.get(upperQuery);
+
+    // If 3-letter code provided, also try K-prefix version (BOS → KBOS)
+    if (!exactMatch && upperQuery.length === 3 && /^[A-Z]{3}$/.test(upperQuery)) {
+      const kPrefixCode = 'K' + upperQuery;
+      exactMatch = this.airports.get(kPrefixCode);
+    }
+
     if (exactMatch) {
       results.push(exactMatch);
       if (maxResults === 1) return results;
@@ -151,14 +159,30 @@ export class AirportSpatialIndex {
       }
     }
 
-    // Sort results: ICAO matches first, then by name
+    // Sort results with improved ICAO prioritization
     results.sort((a, b) => {
+      // Exact match comes first
+      const aExact = a.id.toUpperCase() === upperQuery;
+      const bExact = b.id.toUpperCase() === upperQuery;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+
+      // K-prefix match for 3-letter queries (BOS → KBOS)
+      if (upperQuery.length === 3) {
+        const kPrefixCode = 'K' + upperQuery;
+        const aIsKMatch = a.id.toUpperCase() === kPrefixCode;
+        const bIsKMatch = b.id.toUpperCase() === kPrefixCode;
+        if (aIsKMatch && !bIsKMatch) return -1;
+        if (!aIsKMatch && bIsKMatch) return 1;
+      }
+
+      // ID starts with query
       const aIdMatch = a.id.toLowerCase().startsWith(lowerQuery);
       const bIdMatch = b.id.toLowerCase().startsWith(lowerQuery);
-
       if (aIdMatch && !bIdMatch) return -1;
       if (!aIdMatch && bIdMatch) return 1;
 
+      // Default: alphabetical by ID
       return a.id.localeCompare(b.id);
     });
 

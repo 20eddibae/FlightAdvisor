@@ -48,12 +48,12 @@ export function AirportCacheProvider({ children }: AirportCacheProviderProps) {
         await cacheInstance.initialize();
 
         // Only update state if component is still mounted
+        // React 18+ automatically batches state updates
         if (isMounted) {
-          setCache(cacheInstance);
-
-          // Update status once after initialization
           const currentStatus = cacheInstance.getCacheStatus();
+          setCache(cacheInstance);
           setStatus(currentStatus);
+          console.log('✓ Cache provider ready');
         }
       } catch (error) {
         console.error('Failed to initialize cache:', error);
@@ -79,17 +79,33 @@ export function AirportCacheProvider({ children }: AirportCacheProviderProps) {
     }
   }, [cache]);
 
+  // Memoize bound functions to prevent re-creating them
+  const boundFunctions = useMemo(() => {
+    if (!cache) {
+      return {
+        getAirportsInViewport: () => [],
+        searchAirports: () => [],
+        getAirportById: () => null,
+      };
+    }
+    return {
+      getAirportsInViewport: cache.getAirportsInViewport.bind(cache),
+      searchAirports: cache.searchAirports.bind(cache),
+      getAirportById: cache.getAirportById.bind(cache),
+    };
+  }, [cache]);
+
   const value = useMemo<AirportCacheContextValue>(() => {
     return {
       cache,
       status,
-      getAirportsInViewport: cache?.getAirportsInViewport.bind(cache) || (() => []),
-      searchAirports: cache?.searchAirports.bind(cache) || (() => []),
-      getAirportById: cache?.getAirportById.bind(cache) || (() => null),
+      getAirportsInViewport: boundFunctions.getAirportsInViewport,
+      searchAirports: boundFunctions.searchAirports,
+      getAirportById: boundFunctions.getAirportById,
       refreshStatus,
       isInitialized: status.initialized,
     };
-  }, [cache, status, refreshStatus]);
+  }, [cache, status, boundFunctions, refreshStatus]);
 
   return (
     <AirportCacheContext.Provider value={value}>

@@ -8,6 +8,7 @@ import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
 import { CacheStatus } from '../Controls/CacheStatus'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
+import { simplifyAirspace } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
 import { US_REGIONS, FEATURE_FLAGS } from '@/lib/constants'
@@ -29,10 +30,12 @@ export default function MapContainer() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([])
   const [airspace, setAirspace] = useState<AirspaceFeatureCollection | null>(null)
 
-  // Debug: Track render count
+  // Debug: Track render count (only warn if excessive)
   const renderCount = useRef(0)
   renderCount.current++
-  console.log(`🔄 MapContainer render #${renderCount.current}`)
+  if (renderCount.current > 3 && process.env.NODE_ENV === 'development') {
+    console.warn(`⚠️  MapContainer excessive renders: #${renderCount.current}`)
+  }
 
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [isCalculating, setIsCalculating] = useState(false)
@@ -44,6 +47,10 @@ export default function MapContainer() {
     metar: any | null
     taf: any | null
   }> | undefined>(undefined)
+
+  // Track current route endpoints for clustering exclusion
+  const [currentDepartureId, setCurrentDepartureId] = useState<string | undefined>(undefined)
+  const [currentDestinationId, setCurrentDestinationId] = useState<string | undefined>(undefined)
 
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
 
@@ -110,23 +117,50 @@ export default function MapContainer() {
       // === FIX 1: Non-blocking airport cache load ===
       // Show cached airports IMMEDIATELY, load missing regions in background
       let airports: Airport[] = []
+      let heliports: { id: string; name: string; lat: number; lon: number }[] = []
 
       if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized && cache) {
         // Get what we have NOW (even if incomplete)
         const cachedAirports = getAirportsInViewport(boundsArray)
 
-        // Convert and display immediately
-        airports = cachedAirports
+        console.log(`📦 Cache returned ${cachedAirports.length} airports for viewport`)
+
+        // Separate heliports from airports
+        cachedAirports
           .filter(ap => ap && ap.id && ap.name)
-          .map(ap => ({
-            id: ap.id,
-            name: ap.name,
-            lat: ap.lat,
-            lon: ap.lon,
-            elevation: ap.elevation || 0,
-            type: ap.type || 'non-towered',
-            notes: ap.notes || undefined,
-          }))
+          .forEach(ap => {
+            // Check if this is a heliport (based on notes or type)
+            const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
+                              ap.notes?.toLowerCase().includes('helipad')
+
+            if (isHeliport) {
+              heliports.push({
+                id: ap.id,
+                name: ap.name,
+                lat: ap.lat,
+                lon: ap.lon,
+              })
+            } else {
+              airports.push({
+                id: ap.id,
+                name: ap.name,
+                lat: ap.lat,
+                lon: ap.lon,
+                elevation: ap.elevation || 0,
+                type: ap.type || 'non-towered',
+                notes: ap.notes || undefined,
+              })
+            }
+          })
+
+        // DEBUG: Show breakdown of towered vs non-towered FROM CACHE
+        const toweredFromCache = airports.filter(ap => ap.type === 'towered')
+        const nonToweredFromCache = airports.filter(ap => ap.type === 'non-towered')
+        console.log(`📦 Cache data: ${toweredFromCache.length} towered, ${nonToweredFromCache.length} non-towered`)
+
+        if (toweredFromCache.length > 0) {
+          console.log(`   Towered airports from cache:`, toweredFromCache.slice(0, 5).map(ap => ap.id).join(', '))
+        }
 
         // Render cached airports NOW
         setAirports(airports)
@@ -135,22 +169,39 @@ export default function MapContainer() {
         // Load missing regions in BACKGROUND (non-blocking)
         cache.loadRegionsForViewport(boundsArray).then(() => {
           // Update with fresh data when ready
-          const updated = getAirportsInViewport(boundsArray)
-            .filter(ap => ap && ap.id && ap.name)
-            .map(ap => ({
-              id: ap.id,
-              name: ap.name,
-              lat: ap.lat,
-              lon: ap.lon,
-              elevation: ap.elevation || 0,
-              type: ap.type || 'non-towered',
-              notes: ap.notes || undefined,
-            }))
+          const allAirports = getAirportsInViewport(boundsArray).filter(ap => ap && ap.id && ap.name)
+
+          const updatedAirports: Airport[] = []
+          const updatedHeliports: typeof heliports = []
+
+          allAirports.forEach(ap => {
+            const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
+                              ap.notes?.toLowerCase().includes('helipad')
+
+            if (isHeliport) {
+              updatedHeliports.push({
+                id: ap.id,
+                name: ap.name,
+                lat: ap.lat,
+                lon: ap.lon,
+              })
+            } else {
+              updatedAirports.push({
+                id: ap.id,
+                name: ap.name,
+                lat: ap.lat,
+                lon: ap.lon,
+                elevation: ap.elevation || 0,
+                type: ap.type || 'non-towered',
+                notes: ap.notes || undefined,
+              })
+            }
+          })
 
           // Only update if we got more airports
-          if (updated.length > airports.length) {
-            setAirports(updated)
-            console.log(`✓ Updated to ${updated.length} airports after background load`)
+          if (updatedAirports.length > airports.length) {
+            setAirports(updatedAirports)
+            console.log(`✓ Updated to ${updatedAirports.length} airports after background load`)
           }
         }).catch(err => {
           console.warn('Background region load failed:', err)
@@ -163,15 +214,54 @@ export default function MapContainer() {
           console.warn('Failed to fetch airports from API, continuing with other data')
         } else {
           const airportsData = await airportsRes.json()
-          airports = airportsData.data.map((ap: any) => ({
-            id: ap.icaoCode || ap._id,
-            name: ap.name,
-            lat: ap.geometry.coordinates[1],
-            lon: ap.geometry.coordinates[0],
-            elevation: ap.elevation?.value || 0,
-            type: ap.trafficType?.includes(0) ? 'towered' : 'non-towered',
-            notes: `Type: ${ap.type}`,
-          }))
+
+          // Separate heliports from airports
+          // Type codes: 2=large, 3=medium, 4=small, 6=heliport, 7=military
+          // Traffic codes: 0=VFR only, 1=IFR available
+          airportsData.data.forEach((ap: any) => {
+            const isHeliport = ap.type === 6  // Numeric code for heliport
+
+            if (isHeliport) {
+              heliports.push({
+                id: ap.icaoCode || ap._id,
+                name: ap.name,
+                lat: ap.geometry.coordinates[1],
+                lon: ap.geometry.coordinates[0],
+              })
+            } else {
+              // FIXED: Type codes don't indicate size - use ICAO codes instead!
+              // OpenAIP type 2 includes everything from major airports to private strips
+              // Only reliable indicator: 4-letter K-prefixed ICAO codes = towered airports
+              const hasValidICAO = ap.icaoCode && ap.icaoCode.length === 4 && ap.icaoCode.startsWith('K')
+              const isTowered = hasValidICAO  // Only ICAO-coded airports are towered
+
+              // DEBUG: Log ICAO-coded airports to verify detection
+              if (hasValidICAO && airports.length < 5) {
+                console.log(`✈️  Towered airport: ${ap.icaoCode} - ${ap.name} (type=${ap.type}, traffic=${ap.trafficType})`)
+              }
+
+              // Map type codes to readable names
+              const typeNames: Record<number, string> = {
+                2: 'Large Airport',
+                3: 'Medium Airport',
+                4: 'Small Airport',
+                5: 'Closed',
+                6: 'Heliport',
+                7: 'Military/Restricted'
+              }
+              const typeName = typeNames[ap.type as number] || `Type ${ap.type}`
+
+              airports.push({
+                id: ap.icaoCode || ap._id,
+                name: ap.name,
+                lat: ap.geometry.coordinates[1],
+                lon: ap.geometry.coordinates[0],
+                elevation: ap.elevation?.value || 0,
+                type: isTowered ? 'towered' : 'non-towered',
+                notes: typeName,
+              })
+            }
+          })
           setAirports(airports)
         }
       }
@@ -183,8 +273,19 @@ export default function MapContainer() {
 
       if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
         // Use cached navaids and airspace
-        setWaypoints(cached.navaids)
-        setAirspace(cached.airspace)
+        // Only update state if content actually changed (compare feature count to avoid unnecessary re-renders)
+        setWaypoints(prev => {
+          if (prev.length === cached.navaids.length) {
+            return prev // Keep same reference to prevent re-render
+          }
+          return cached.navaids
+        })
+        setAirspace(prev => {
+          if (prev && prev.features.length === cached.airspace.features.length) {
+            return prev // Keep same reference to prevent AirspaceLayer re-render
+          }
+          return cached.airspace
+        })
         console.log(`✓ Using cached navaids/airspace for ${cacheKey}`)
       } else {
         // Fetch navaids and airspace (in parallel)
@@ -200,31 +301,101 @@ export default function MapContainer() {
 
           if (navaidsRes.ok) {
             const navaidsData = await navaidsRes.json()
-            waypoints = navaidsData.data.map((navaid: any) => ({
-              id: navaid._id,
-              name: navaid.name,
-              lat: navaid.geometry.coordinates[1],
-              lon: navaid.geometry.coordinates[0],
-              type: navaid.type === 4 ? 'VOR' : navaid.type === 3 ? 'NDB' : 'GPS_FIX',
-              frequency: navaid.frequency
-                ? `${navaid.frequency.value} ${navaid.frequency.unit}`
-                : undefined,
-              description: `Type ${navaid.type} navigation aid`,
-            }))
+            waypoints = navaidsData.data.map((navaid: any) => {
+              // Map OpenAIP navaid types correctly
+              let waypointType: Waypoint['type'] = 'GPS_FIX'
+              if (navaid.type === 4) waypointType = 'VOR'
+              else if (navaid.type === 5) waypointType = 'VORTAC'
+              else if (navaid.type === 3) waypointType = 'NDB'
+              else if (navaid.type === 6) waypointType = 'INTERSECTION'
+              // Everything else defaults to GPS_FIX
+
+              return {
+                id: navaid._id,
+                name: navaid.name,
+                lat: navaid.geometry.coordinates[1],
+                lon: navaid.geometry.coordinates[0],
+                type: waypointType,
+                frequency: navaid.frequency
+                  ? `${navaid.frequency.value} ${navaid.frequency.unit}`
+                  : undefined,
+                description: `Type ${navaid.type} navigation aid`,
+              }
+            })
+
+            // Debug: Count types to verify color consistency
+            const typeCounts = waypoints.reduce((acc, w) => {
+              acc[w.type] = (acc[w.type] || 0) + 1
+              return acc
+            }, {} as Record<string, number>)
+            console.log('🔷 Waypoint types loaded:', typeCounts, `(${waypoints.length} total navigation aids)`)
           } else {
             console.warn('Failed to fetch navaids, using empty set')
           }
 
+          // Add major airports (towered) as blue waypoint markers for navigation
+          const majorAirports = airports
+            .filter(ap => ap.type === 'towered')
+            .map(ap => ({
+              id: ap.id,
+              name: ap.name,
+              lat: ap.lat,
+              lon: ap.lon,
+              type: 'AIRPORT' as const,
+              description: `Towered airport`,
+            }))
+
+          // Add heliports as blue waypoint markers
+          const heliportWaypoints = heliports.map(hp => ({
+            id: hp.id,
+            name: hp.name,
+            lat: hp.lat,
+            lon: hp.lon,
+            type: 'AIRPORT' as const, // Use AIRPORT type for blue color
+            description: 'Heliport',
+          }))
+
+          // DEBUG: Show towered vs non-towered breakdown
+          const toweredCount = airports.filter(ap => ap.type === 'towered').length
+          const nonToweredCount = airports.filter(ap => ap.type === 'non-towered').length
+          console.log(`🏢 Airport breakdown: ${toweredCount} towered, ${nonToweredCount} non-towered`)
+
+          // DEBUG: Show sample of towered airports
+          const sampleTowered = airports.filter(ap => ap.type === 'towered').slice(0, 5)
+          if (sampleTowered.length > 0) {
+            console.log('   Sample towered airports:', sampleTowered.map(ap => `${ap.id} (${ap.name})`).join(', '))
+          } else {
+            console.warn('⚠️  NO TOWERED AIRPORTS FOUND - All airports marked as non-towered!')
+          }
+
+          // REMOVED: Don't add airports to waypoints - they should render as GREEN airport markers
+          // Major airports will be shown by AirportMarkers component with special styling
+
+          waypoints = [...waypoints]  // Just navaids, no airports added
+
+          console.log(`✓ Waypoints prepared: ${waypoints.length} navaids (airports will render separately as green markers)`)
+
           if (airspaceRes.ok) {
             const airspaceData = await airspaceRes.json()
-            airspace = airspaceData.data
+            // Simplify airspace polygons for better rendering performance
+            airspace = simplifyAirspace(airspaceData.data, 0.001)
           } else {
             console.warn('Failed to fetch airspace, using empty set')
           }
 
-          // Update state
-          setWaypoints(waypoints)
-          setAirspace(airspace)
+          // Update state (only if different to prevent unnecessary re-renders)
+          setWaypoints(prev => {
+            if (prev.length === waypoints.length) {
+              return prev
+            }
+            return waypoints
+          })
+          setAirspace(prev => {
+            if (prev && prev.features.length === airspace.features.length) {
+              return prev
+            }
+            return airspace
+          })
 
           // Cache for future use
           viewportCache.set(cacheKey, {
@@ -239,9 +410,9 @@ export default function MapContainer() {
         } catch (error) {
           console.warn('Error loading navaids/airspace:', error)
           // Don't show error - airports are already displayed
-          // Use empty sets
-          setWaypoints([])
-          setAirspace({ type: 'FeatureCollection', features: [] })
+          // Only clear if not already empty (prevent unnecessary re-renders)
+          setWaypoints(prev => prev.length === 0 ? prev : [])
+          setAirspace(prev => (prev && prev.features.length === 0) ? prev : { type: 'FeatureCollection', features: [] })
         }
       }
     } catch (error) {
@@ -278,6 +449,7 @@ export default function MapContainer() {
 
     // Load initial data for viewport
     console.log('Loading initial viewport data...')
+    hasLoadedDataRef.current = true // Mark as loaded to prevent duplicate load
     await loadDataForViewport(loadedMap)
 
     // Remove old event listener if exists
@@ -424,6 +596,8 @@ export default function MapContainer() {
       }
 
       setRoute(routeResult)
+      setCurrentDepartureId(departureCode)
+      setCurrentDestinationId(destinationCode)
 
       // Fetch reasoning from API
       setIsLoadingReasoning(true)
@@ -521,7 +695,8 @@ export default function MapContainer() {
     setRoute(null)
     setReasoning(null)
     setShowReasoning(false)
-    setWeather(undefined)
+    setCurrentDepartureId(undefined)
+    setCurrentDestinationId(undefined)
   }, [])
 
   const handleToggleReasoning = useCallback(() => {
@@ -536,7 +711,19 @@ export default function MapContainer() {
     <>
       <MapView onMapLoad={handleMapLoad} />
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
-      {map && airports.length > 0 && <AirportMarkers map={map} airports={airports} />}
+      {map && airports.length > 0 ? (
+        <>
+          {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports`)}
+          <AirportMarkers
+            map={map}
+            airports={airports}
+            departureId={currentDepartureId}
+            destinationId={currentDestinationId}
+          />
+        </>
+      ) : (
+        map && console.log('🛑 Not rendering AirportMarkers: airports.length =', airports.length)
+      )}
       {map && waypoints.length > 0 && <WaypointMarkers map={map} waypoints={waypoints} />}
       {map && route && <RouteLayer map={map} route={route} />}
 
