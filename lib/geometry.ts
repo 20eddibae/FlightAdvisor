@@ -5,15 +5,26 @@ import { AirspaceFeatureCollection } from './geojson'
 /**
  * Check if a line intersects with any airspace polygon
  */
+/**
+ * Check if a line intersects with any airspace polygon
+ */
 export function checkAirspaceIntersection(
   start: Position,
   end: Position,
   airspace: AirspaceFeatureCollection
 ): boolean {
   const line = turf.lineString([start, end])
+  // Optimization: Calculate bbox of the line once
+  const lineBbox = turf.bbox(line)
 
   for (const feature of airspace.features) {
     try {
+      // Optimization: Check if bounding boxes overlap before expensive intersection
+      const featureBbox = turf.bbox(feature)
+      if (!doBboxesOverlap(lineBbox, featureBbox)) {
+        continue
+      }
+
       const intersection = turf.lineIntersect(line, feature as Feature<Polygon | MultiPolygon>)
       if (intersection.features.length > 0) {
         return true
@@ -25,6 +36,14 @@ export function checkAirspaceIntersection(
   }
 
   return false
+}
+
+/**
+ * Check if two bounding boxes overlap
+ * BBox format: [minX, minY, maxX, maxY]
+ */
+function doBboxesOverlap(a: number[], b: number[]): boolean {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1]
 }
 
 /**
@@ -86,9 +105,17 @@ export function isPointInAirspace(
   airspace: AirspaceFeatureCollection
 ): boolean {
   const pt = turf.point(point)
+  // [minX, minY, maxX, maxY] - for a point, min=max
+  const ptBbox = [point[0], point[1], point[0], point[1]]
 
   for (const feature of airspace.features) {
     try {
+      // Optimization: Check BBox first
+      const featureBbox = turf.bbox(feature)
+      if (!doBboxesOverlap(ptBbox, featureBbox)) {
+        continue
+      }
+
       if (turf.booleanPointInPolygon(pt, feature as Feature<Polygon | MultiPolygon>)) {
         return true
       }
@@ -116,28 +143,6 @@ export function simplifyLine(
   const simplified = turf.simplify(line, { tolerance, highQuality: true })
 
   return simplified.geometry.coordinates
-}
-
-/**
- * Find the closest waypoint to a given point (within threshold distance in nm)
- */
-export function findClosestWaypoint(
-  point: Position,
-  waypoints: Array<{ lon: number; lat: number; id: string }>,
-  thresholdNm: number = 2
-): { lon: number; lat: number; id: string } | null {
-  let closest: { lon: number; lat: number; id: string } | null = null
-  let minDistance = Infinity
-
-  for (const waypoint of waypoints) {
-    const distance = calculateDistance(point, [waypoint.lon, waypoint.lat])
-    if (distance < minDistance && distance <= thresholdNm) {
-      minDistance = distance
-      closest = waypoint
-    }
-  }
-
-  return closest
 }
 
 /**

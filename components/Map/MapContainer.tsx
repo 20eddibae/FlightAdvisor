@@ -24,7 +24,7 @@ const CloudLayer = dynamic(() => import('./CloudLayer'), { ssr: false })
 
 
 export default function MapContainer() {
-  const { cache, getAirportsInViewport, getAirportById, isInitialized } = useAirportCache()
+  const { cache, getAirportsInViewport, getAirportById, addWeatherStations, isInitialized } = useAirportCache()
 
   const [map, setMap] = useState<MapRef | null>(null)
   const [airports, setAirports] = useState<Airport[]>([])
@@ -127,6 +127,8 @@ export default function MapContainer() {
     try {
       // Get current viewport bounds
       const bounds = mapInstance.getBounds()
+      if (!bounds) return
+
       const bbox = [
         bounds.getWest(),
         bounds.getSouth(),
@@ -187,7 +189,7 @@ export default function MapContainer() {
         console.log(`🌡️ Converting ${weatherStationAirports.length} weather stations to airport objects`)
 
         // Add weather stations to cache for searchability
-        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized && cache) {
+        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized) {
           const cachedWeatherStations = weatherStationAirports.map(ap => ({
             id: ap.id,
             name: ap.name,
@@ -196,11 +198,16 @@ export default function MapContainer() {
             elevation: ap.elevation,
             type: ap.type,
             notes: ap.notes,
-            _metadata: ap._metadata
+            _metadata: ap._metadata || {
+              isWeatherStation: true,
+              source: 'weather-api' as const,
+              cachedAt: Date.now()
+            }
           }))
 
           // Insert weather stations into the cache spatial index
-          cache.addWeatherStations(cachedWeatherStations)
+          // Use the destructured function instead of accessing cache directly
+          addWeatherStations(cachedWeatherStations)
           console.log(`✅ Added ${cachedWeatherStations.length} weather stations to cache (searchable)`)
         }
 
@@ -227,7 +234,7 @@ export default function MapContainer() {
       console.error('❌ Failed to fetch cloud data:', error)
       // Don't show error to user - cloud data is supplementary
     }
-  }, [cache, isInitialized])
+  }, [addWeatherStations, isInitialized])
 
   const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
@@ -266,7 +273,7 @@ export default function MapContainer() {
           .forEach(ap => {
             // Check if this is a heliport (based on notes or type)
             const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
-                              ap.notes?.toLowerCase().includes('helipad')
+              ap.notes?.toLowerCase().includes('helipad')
 
             if (isHeliport) {
               heliports.push({
@@ -311,7 +318,7 @@ export default function MapContainer() {
 
           allAirports.forEach(ap => {
             const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
-                              ap.notes?.toLowerCase().includes('helipad')
+              ap.notes?.toLowerCase().includes('helipad')
 
             if (isHeliport) {
               updatedHeliports.push({

@@ -1,8 +1,3 @@
-/**
- * Cloud Layer - Displays cloud conditions as a visual overlay across the map
- * Shows cloud coverage patterns and ceiling heights as colored regions
- */
-
 'use client'
 
 import { useEffect, useRef } from 'react'
@@ -17,119 +12,36 @@ interface CloudLayerProps {
 export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
   const sourceId = 'metar-cloud-overlay'
   const overlayCircleLayerId = 'cloud-coverage-overlay'
-  const hasInitialized = useRef(false)
+  const layerInitialized = useRef(false)
 
   // NOTE: Green dots and labels are now rendered by AirportMarkers component for UI consistency and searchability
 
-  console.log('🌤️ CloudLayer component rendered with props:', {
-    hasMap: !!map,
-    hasCloudData: !!cloudData,
-    featureCount: cloudData?.features?.length || 0
-  })
-
+  // 1. Initialization Effect: Add Source & Layer
   useEffect(() => {
-    console.log('CloudLayer useEffect triggered:', {
-      hasMap: !!map,
-      hasCloudData: !!cloudData,
-      featureCount: cloudData?.features?.length || 0
-    })
+    if (!map) return
 
-    if (!map || !cloudData) {
-      if (!map) console.log('❌ CloudLayer: No map')
-      if (!cloudData) console.log('❌ CloudLayer: No cloud data')
-      return
-    }
+    const initLayers = () => {
+      // Always check state on map directly to be robust
+      const sourceExists = map.getSource(sourceId)
+      const layerExists = map.getLayer(overlayCircleLayerId)
 
-    console.log(`✅ CloudLayer: Rendering ${cloudData.features?.length || 0} METAR stations as overlay + green dots`)
+      if (sourceExists && layerExists) {
+        layerInitialized.current = true
+        return
+      }
 
-    // Debug: Show sample of data
-    if (cloudData.features && cloudData.features.length > 0) {
-      const sample = cloudData.features[0]
-      console.log('📊 CloudLayer sample data:', {
-        id: sample.properties?.id,
-        cover: sample.properties?.cover,
-        fltcat: sample.properties?.fltcat,
-        ceil: sample.properties?.ceil,
-        coords: sample.geometry?.coordinates
-      })
-    } else {
-      console.warn('⚠️ CloudLayer: cloudData.features is empty or undefined')
-      return
-    }
+      console.log('☁️ CloudLayer: Initializing source and layers')
 
-    // Process cloud data to add intensity values for visualization
-    const processedData = {
-      ...cloudData,
-      features: cloudData.features.map(feature => {
-        const props = feature.properties || {}
-
-        // Calculate cloud intensity based on flight category and coverage
-        let intensity = 0
-        const fltcat = props.fltcat || 'VFR'
-        const cover = props.cover || 'CLR'
-
-        // Intensity based on flight category (0-1 scale)
-        switch (fltcat) {
-          case 'VFR':
-            intensity = 0.2
-            break
-          case 'MVFR':
-            intensity = 0.5
-            break
-          case 'IFR':
-            intensity = 0.8
-            break
-          case 'LIFR':
-            intensity = 1.0
-            break
-          default:
-            intensity = 0.1
-        }
-
-        // Adjust intensity based on cloud coverage
-        switch (cover) {
-          case 'CLR':
-          case 'SKC':
-            intensity *= 0.3
-            break
-          case 'FEW':
-            intensity *= 0.5
-            break
-          case 'SCT':
-            intensity *= 0.7
-            break
-          case 'BKN':
-            intensity *= 0.9
-            break
-          case 'OVC':
-            intensity *= 1.0
-            break
-        }
-
-        return {
-          ...feature,
-          properties: {
-            ...props,
-            intensity
-          }
-        }
-      })
-    }
-
-    // Initialize source and layers once
-    if (!hasInitialized.current) {
-      console.log('🎨 Initializing cloud overlay layers...')
-
-      // Add source
-      if (!map.getSource(sourceId)) {
+      // Add empty source if missing
+      if (!sourceExists) {
         map.addSource(sourceId, {
           type: 'geojson',
-          data: processedData,
+          data: { type: 'FeatureCollection', features: [] },
         })
       }
 
-      // Layer 1: Large semi-transparent circles to create overlay effect
-      if (!map.getLayer(overlayCircleLayerId)) {
+      // Layer: Large semi-transparent circles to create overlay effect
+      if (!layerExists) {
         map.addLayer({
           id: overlayCircleLayerId,
           type: 'circle',
@@ -145,20 +57,16 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
             ],
             'circle-color': [
               'case',
-              // VFR - Very light green/blue tint
-              ['==', ['get', 'fltcat'], 'VFR'],
-              '#00ff0015',
-              // MVFR - Yellow overlay
-              ['==', ['get', 'fltcat'], 'MVFR'],
-              '#ffff0040',
-              // IFR - Orange/Red overlay
-              ['==', ['get', 'fltcat'], 'IFR'],
-              '#ff8c0060',
-              // LIFR - Dark red overlay
-              ['==', ['get', 'fltcat'], 'LIFR'],
-              '#ff000080',
+              // VFR - Very light green/blue tint (rgba(0, 255, 0, 0.1))
+              ['==', ['get', 'fltcat'], 'VFR'], 'rgba(0, 255, 0, 0.1)',
+              // MVFR - Yellow overlay (rgba(255, 255, 0, 0.25))
+              ['==', ['get', 'fltcat'], 'MVFR'], 'rgba(255, 255, 0, 0.25)',
+              // IFR - Orange/Red overlay (rgba(255, 140, 0, 0.4))
+              ['==', ['get', 'fltcat'], 'IFR'], 'rgba(255, 140, 0, 0.4)',
+              // LIFR - Dark red overlay (rgba(255, 0, 0, 0.5))
+              ['==', ['get', 'fltcat'], 'LIFR'], 'rgba(255, 0, 0, 0.5)',
               // Unknown - Light gray
-              '#80808020'
+              'rgba(128, 128, 128, 0.1)'
             ],
             'circle-opacity': [
               'interpolate',
@@ -172,22 +80,16 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
         })
       }
 
-      hasInitialized.current = true
-      console.log('✅ Cloud overlay layer initialized (1 layer: overlay circles only)')
-      console.log('   Green dots and labels rendered by AirportMarkers component for consistency')
+      layerInitialized.current = true
     }
 
-    // Update data when cloudData changes
-    const existingSource = map.getSource(sourceId)
-    if (existingSource && existingSource.type === 'geojson') {
-      existingSource.setData(processedData)
-      console.log(`✅ Updated cloud overlay with ${processedData.features.length} stations`)
-    }
+    // Initialize layers
+    initLayers()
 
-    // Cleanup function
+    // Cleanup on unmount or map change
     return () => {
-      // Only remove on unmount if map still exists
-      if (map && hasInitialized.current) {
+      // Only remove on unmount if we initialized AND map still exists
+      if (map && layerInitialized.current) {
         try {
           if (map.getLayer(overlayCircleLayerId)) {
             map.removeLayer(overlayCircleLayerId)
@@ -195,14 +97,70 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
           if (map.getSource(sourceId)) {
             map.removeSource(sourceId)
           }
-          hasInitialized.current = false
+          layerInitialized.current = false
           console.log('🧹 Cleaned up cloud overlay layer')
         } catch (e) {
-          // Ignore errors during cleanup (map might be destroyed)
+          // Ignore errors during cleanup (map might be destroyed, which is fine)
+          console.warn('Values cleaned up, but map might have been destroyed')
         }
       }
     }
-  }, [map, cloudData])
+  }, [map])
+
+  // 2. Data Update Effect: Update Source Data
+  useEffect(() => {
+    if (!map || !cloudData || !layerInitialized.current) return
+
+    const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource
+    if (!source) return
+
+    console.log(`☁️ CloudLayer: Updating data with ${cloudData.features.length} features`)
+
+    // Process cloud data to add intensity values for visualization
+    const processedData = {
+      ...cloudData,
+      features: cloudData.features.map(feature => {
+        const props = feature.properties || {}
+
+        // Calculate cloud intensity based on flight category and coverage
+        let intensity = 0
+        const fltcat = props.fltcat || 'VFR'
+        const cover = props.cover || 'CLR'
+
+        // Intensity based on flight category (0-1 scale)
+        switch (fltcat) {
+          case 'VFR': intensity = 0.2; break
+          case 'MVFR': intensity = 0.5; break
+          case 'IFR': intensity = 0.8; break
+          case 'LIFR': intensity = 1.0; break
+          default: intensity = 0.1
+        }
+
+        // Adjust intensity based on cloud coverage
+        switch (cover) {
+          case 'CLR': case 'SKC': intensity *= 0.3; break
+          case 'FEW': intensity *= 0.5; break
+          case 'SCT': intensity *= 0.7; break
+          case 'BKN': intensity *= 0.9; break
+          case 'OVC': intensity *= 1.0; break
+        }
+
+        return {
+          ...feature,
+          properties: {
+            ...props,
+            intensity
+          }
+        }
+      })
+    }
+
+    try {
+      source.setData(processedData)
+    } catch (e) {
+      console.warn('Failed to update cloud layer data:', e)
+    }
+  }, [map, cloudData]) // Run whenever cloudData changes
 
   return null
 }

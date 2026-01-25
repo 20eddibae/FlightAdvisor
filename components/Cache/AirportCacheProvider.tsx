@@ -15,6 +15,7 @@ interface AirportCacheContextValue {
   getAirportsInViewport: (bounds: [number, number, number, number]) => CachedAirport[];
   searchAirports: (query: string, options?: SearchOptions) => CachedAirport[];
   getAirportById: (id: string) => CachedAirport | null;
+  addWeatherStations: (stations: CachedAirport[]) => void;
   refreshStatus: () => void;
   isInitialized: boolean;
 }
@@ -86,12 +87,14 @@ export function AirportCacheProvider({ children }: AirportCacheProviderProps) {
         getAirportsInViewport: () => [],
         searchAirports: () => [],
         getAirportById: () => null,
+        addWeatherStations: () => { },
       };
     }
     return {
       getAirportsInViewport: cache.getAirportsInViewport.bind(cache),
       searchAirports: cache.searchAirports.bind(cache),
       getAirportById: cache.getAirportById.bind(cache),
+      addWeatherStations: cache.addWeatherStations.bind(cache),
     };
   }, [cache]);
 
@@ -102,6 +105,7 @@ export function AirportCacheProvider({ children }: AirportCacheProviderProps) {
       getAirportsInViewport: boundFunctions.getAirportsInViewport,
       searchAirports: boundFunctions.searchAirports,
       getAirportById: boundFunctions.getAirportById,
+      addWeatherStations: boundFunctions.addWeatherStations,
       refreshStatus,
       isInitialized: status.initialized,
     };

@@ -24,12 +24,20 @@ function distanceNM(lat1: number, lon1: number, lat2: number, lon2: number): num
  * Get clustering radius based on zoom level (aviation standard)
  * Based on typical VFR sectional chart scales and pilot visibility expectations
  */
+// ... (imports remain)
+
+/**
+ * Get clustering radius based on zoom level (aviation standard)
+ * Optimized for better visual decluttering at lower zoom levels
+ */
 export function getClusterRadiusNM(zoom: number): number {
-  if (zoom >= 9) return 0        // Show all (1:500,000 scale ~ 50nm view)
-  if (zoom >= 7) return 10       // Regional (1:1,000,000 scale ~ 200nm view)
-  if (zoom >= 5) return 25       // State level (1:2,000,000 scale ~ 500nm view)
-  if (zoom >= 3) return 50       // Multi-state (1:4,000,000 scale ~ 1000nm view)
-  return 100                     // National (1:8,000,000+ scale ~ 2000nm+ view)
+  if (zoom >= 12) return 0       // Show all details (very high zoom)
+  if (zoom >= 10) return 5       // Terminal area (high zoom)
+  if (zoom >= 8) return 20       // Approach/Departure (medium-high)
+  if (zoom >= 6) return 50       // Enroute Low (medium)
+  if (zoom >= 4) return 100      // Enroute High (medium-low)
+  if (zoom >= 3) return 200      // Regional (low)
+  return 400                     // Global (very low)
 }
 
 export interface WaypointCluster {
@@ -59,6 +67,7 @@ interface ClusterablePoint {
 
 /**
  * Generic clustering function
+ * Uses a greedy approach: pick a point, find all neighbors within radius, form cluster.
  */
 function clusterPoints<T extends ClusterablePoint>(
   points: T[],
@@ -94,46 +103,58 @@ function clusterPoints<T extends ClusterablePoint>(
   })
 
   // Then cluster remaining points
-  points.forEach(point => {
-    if (processed.has(point.id)) return
+  // We iterate through points in order. The first available point becomes the "seed" for the cluster.
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i]
+    if (processed.has(point.id)) continue
 
     // Start new cluster with this point
     const cluster: T[] = [point]
     processed.add(point.id)
 
     // Find nearby points to add to cluster
-    points.forEach(other => {
-      if (processed.has(other.id)) return
+    // Optimization: Only check points that haven't been processed yet
+    for (let j = i + 1; j < points.length; j++) {
+      const other = points[j]
+      if (processed.has(other.id)) continue
 
       const dist = distanceNM(point.lat, point.lon, other.lat, other.lon)
       if (dist <= radiusNM) {
         cluster.push(other)
         processed.add(other.id)
       }
-    })
+    }
 
-    // Calculate cluster center (average position)
-    const centerLat = cluster.reduce((sum, pt) => sum + pt.lat, 0) / cluster.length
-    const centerLon = cluster.reduce((sum, pt) => sum + pt.lon, 0) / cluster.length
-
+    // Use the seed point's location as the cluster center
+    // This prevents the cluster from "drifting" as points are added/removed or zoom changes slightly
+    // It also ensures that if we prioritize important waypoints (by sorting inputs), the cluster sits on the important one
     clusters.push({
-      id: cluster.length === 1 ? cluster[0].id : `cluster_${clusters.length}`,
-      lat: centerLat,
-      lon: centerLon,
+      id: cluster.length === 1 ? cluster[0].id : `cluster_${point.id}_${cluster.length}`,
+      lat: point.lat,
+      lon: point.lon,
       points: cluster,
       isCluster: cluster.length > 1,
     })
-  })
+  }
 
   return clusters
 }
 
 /**
  * Cluster waypoints based on proximity
- * All waypoints cluster together regardless of type (blue clusters)
+ * Sorts waypoints by priority (VOR > others) before clustering so VORs become cluster centers
  */
 export function clusterWaypoints(waypoints: Waypoint[], radiusNM: number): WaypointCluster[] {
-  return clusterPoints(waypoints, radiusNM).map(cluster => ({
+  // Sort waypoints so important ones are processed first (become seeds)
+  const sortedWaypoints = [...waypoints].sort((a, b) => {
+    const aIsVor = a.type === 'VOR' || a.type === 'VORTAC'
+    const bIsVor = b.type === 'VOR' || b.type === 'VORTAC'
+    if (aIsVor && !bIsVor) return -1
+    if (!aIsVor && bIsVor) return 1
+    return 0
+  })
+
+  return clusterPoints(sortedWaypoints, radiusNM).map(cluster => ({
     ...cluster,
     waypoints: cluster.points,
   }))

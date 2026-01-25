@@ -11,9 +11,20 @@ export interface CachedAirport {
   type: 'towered' | 'non-towered'
   notes?: string
   _metadata: {
-    region: string        // From US_REGIONS
-    cachedAt: number
-    source: 'openaip'
+    region?: string        // From US_REGIONS
+    cachedAt?: number
+    source?: 'openaip' | 'weather-api'
+    isWeatherStation?: boolean
+    metar?: {
+      fltcat?: string
+      cover?: string
+      ceil?: number | null
+      visib?: string
+      temp?: number
+      dewp?: number
+      rawOb?: string
+      obsTime?: string
+    }
   }
 }
 

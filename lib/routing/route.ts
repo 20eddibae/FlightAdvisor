@@ -136,7 +136,7 @@ class SpatialHash {
     return `${x},${y}`
   }
 
-  queryRadius(center: Position, radiusNm: number, hardLimit = 400): number[] {
+  queryRadius(center: Position, radiusNm: number, hardLimit = 10000): number[] {
     const [lon, lat] = center
     const rDeg = radiusNm / 60
     const minLon = lon - rDeg, maxLon = lon + rDeg
@@ -399,12 +399,25 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
   // Fallback: If strict cone search failed, try opening up the cone (widen search)
   // This honors the "optimization" request but ensures robustness
   if (!pathIds) {
-    // Retry with 180 degrees (no cone check effectively)
+    // Retry with 180 degrees (no cone check effectively) and larger corridor
     pathIds = aStarRoute(nodes, 'start', 'end', airspace, {
       maxSegNm: MAX_SEG,
       corridorNm: corridorBase * 5,
-      maxExpansions: 8000,
+      maxExpansions: 15000,
       deviationPenalty: 0.1,
+      coneHalfAngle: 180
+    })
+  }
+
+  if (!pathIds) {
+    // 3rd Try: Desperation mode. 
+    // Huge corridor (effectively global), more expansions, 180 cone.
+    // This allows the route to go completely "wrong" direction if needed to bypass large obstacles.
+    pathIds = aStarRoute(nodes, 'start', 'end', airspace, {
+      maxSegNm: MAX_SEG,
+      corridorNm: 20000, // Covering the whole world generally
+      maxExpansions: 50000, // Try very hard
+      deviationPenalty: 0.0, // Minimal penalty for deviation to encourage finding ANY path
       coneHalfAngle: 180
     })
   }

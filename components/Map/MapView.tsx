@@ -16,7 +16,7 @@ export default function MapView({ onMapLoad }: MapViewProps) {
   const map = useRef<mapboxgl.Map | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  
+
   // Store event handlers in refs so they persist across renders
   const handleLoadRef = useRef<(() => void) | null>(null)
   const handleErrorRef = useRef<((e: any) => void) | null>(null)
