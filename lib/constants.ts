@@ -10,10 +10,10 @@ export const API_TIMEOUT = 60000
 // Colors for map visualization (neutral gray theme per CLAUDE.md)
 export const COLORS = {
   // Airspace colors (increased opacity for better visibility)
-  CLASS_B_FILL: 'rgba(128, 128, 128, 0.4)',
-  CLASS_B_STROKE: 'rgba(64, 64, 64, 1.0)',
-  RESTRICTED_FILL: 'rgba(128, 128, 128, 0.35)',
-  RESTRICTED_STROKE: 'rgba(64, 64, 64, 0.9)',
+  CLASS_B_FILL: 'rgba(34, 197, 94, 0.4)', // Green
+  CLASS_B_STROKE: 'rgba(21, 128, 61, 1.0)', // Dark Green
+  RESTRICTED_FILL: 'rgba(239, 68, 68, 0.45)', // Red
+  RESTRICTED_STROKE: 'rgba(153, 27, 27, 1.0)', // Dark Red
 
   // Route colors
   ROUTE_LINE: '#2563eb',

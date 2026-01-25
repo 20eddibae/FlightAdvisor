@@ -308,11 +308,18 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
   const startPos: Position = [departure.lon, departure.lat]
   const endPos: Position = [arrival.lon, arrival.lat]
 
-  // Safety checks
-  if (isPointInAirspace(startPos, airspace)) {
+  // Filter airspace: Class B is NOT restricted (traversable), others (Restricted, Prohibited, Default) are restricted.
+  // We create a new FeatureCollection containing only the airspace types that should BLOCK the route.
+  const restrictedAirspace: AirspaceFeatureCollection = {
+    ...airspace,
+    features: airspace.features.filter(f => f.properties.type !== 'CLASS_B')
+  }
+
+  // Safety checks - use restrictedAirspace instead of airspace
+  if (isPointInAirspace(startPos, restrictedAirspace)) {
     throw new Error('Departure airport is located inside restricted airspace. Unable to plan departure.')
   }
-  if (isPointInAirspace(endPos, airspace)) {
+  if (isPointInAirspace(endPos, restrictedAirspace)) {
     throw new Error('Arrival airport is located inside restricted airspace. Unable to plan arrival.')
   }
 
@@ -373,7 +380,7 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
       coneHalfAngle: 90 + (i % 3 === 0 ? 30 : 0)
     }
 
-    const pathIds = aStarRoute(nodes, 'start', 'end', airspace, iterationOpts)
+    const pathIds = aStarRoute(nodes, 'start', 'end', restrictedAirspace, iterationOpts)
 
     if (!pathIds) {
       // If we can't find a route even with current penalties, we might have exhausted options
@@ -418,7 +425,7 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
 
   // If we found NO routes (e.g. all blocked), try a desperate "Emergency" search
   if (topCandidates.length === 0) {
-    const fallbackIds = aStarRoute(nodes, 'start', 'end', airspace, {
+    const fallbackIds = aStarRoute(nodes, 'start', 'end', restrictedAirspace, {
       ...baseOpts,
       corridorNm: 10000,
       deviationPenalty: 0,

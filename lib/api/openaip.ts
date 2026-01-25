@@ -177,11 +177,27 @@ function convertAirspacesToGeoJSON(airspaces: any[]): OpenAIPAirspaceResponse {
     const lowerLimit = airspace.lowerLimit?.value || 0
     const upperLimit = airspace.upperLimit?.value || 99999
 
+    // Map numeric types to string identifiers for the frontend renderer
+    let typeString = 'UNKNOWN'
+
+    // Priority 1: ICAO Class (for standard airspace classes)
+    // 0=A, 1=B, 2=C, 3=D, 4=E, 5=F, 6=G, 8=Unclassified
+    if (airspace.icaoClass === 1) typeString = 'CLASS_B'
+    else if (airspace.icaoClass === 2) typeString = 'CLASS_C'
+    else if (airspace.icaoClass === 3) typeString = 'CLASS_D'
+
+    // Priority 2: Airspace Type (overrides class if it's special use)
+    // 0=Controlled, 1=Restricted/Prohibited/Danger, 2=Special Use/MOA, 3=Other
+    else if (airspace.type === 1) typeString = 'RESTRICTED'
+    else if (airspace.type === 2) typeString = 'MOA'
+    else if (airspace.type === 0) typeString = 'CONTROLLED' // Generic controlled if not B/C/D
+    else if (airspace.type === 4) typeString = 'PROHIBITED' // Some APIs use 4 for prohibited
+
     return {
       type: 'Feature',
       properties: {
         name: airspace.name || 'Unnamed Airspace',
-        type: airspace.type || 'UNKNOWN',
+        type: typeString,
         icaoClass: airspace.icaoClass,
         floor_msl: lowerLimit,
         ceiling_msl: upperLimit,
