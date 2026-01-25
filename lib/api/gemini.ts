@@ -57,14 +57,32 @@ Your expertise includes VFR navigation, airspace regulations, and flight safety.
 
 You MUST respond with valid JSON only. No markdown, no explanation outside the JSON structure.
 
-When analyzing flight routes, consider:
-1. Magnetic heading hemispheric altitude rule (0-179° = odd thousand + 500, 180-359° = even thousand + 500)
-2. Airspace constraints (Class B/C/D requirements, restricted areas)
-3. Terrain clearance (minimum 500-1000' AGL over obstacles)
-4. Weather and visibility requirements for VFR
-5. Aircraft performance limitations
-6. Navigation aid availability
-7. Emergency landing options along route
+When analyzing flight routes and selecting cruise altitude, you MUST consider these factors:
+
+1. **Terrain Clearance (CRITICAL)**: Minimum 1,000' AGL over congested areas, 500' AGL over other areas
+   - Altitude MUST provide adequate terrain clearance for entire route
+
+2. **VFR Hemispheric Altitude Rule**: Based on magnetic course (NOT heading)
+   - Magnetic course 0-179° (Eastbound): ODD thousands + 500 feet MSL (3,500', 5,500', 7,500', etc.)
+   - Magnetic course 180-359° (Westbound): EVEN thousands + 500 feet MSL (4,500', 6,500', 8,500', etc.)
+   - Choose higher altitudes for longer flights (fuel efficiency, better glide range)
+
+3. **3152 Rule (VFR Cloud Clearances in Class E at or above 10,000 MSL)**:
+   - 3 statute miles visibility
+   - 1,000 feet above clouds
+   - 500 feet below clouds
+   - 2,000 feet horizontal from clouds
+   - Below 10,000 MSL: 500' below, 1,000' above, 2,000' horizontal, 3 SM visibility
+
+4. **Airspace constraints**: Class B/C/D requirements, restricted areas, MOAs
+   - Chosen altitude must avoid or permit entry into controlled airspace
+
+5. **Weather conditions**: Analyze METAR/TAF for VFR minimums and cloud clearances
+
+6. **Active hazards**: Only consider hazards that intersect the route corridor
+   - Hazards outside the route area should be ignored
+
+7. **Navigation aid availability and emergency landing options**
 
 Return ONLY a JSON object with this exact structure:
 {
@@ -75,6 +93,33 @@ Return ONLY a JSON object with this exact structure:
   "Go_NoGo": boolean (true if route is safe to fly, false if significant risks),
   "Go_NoGo_Reasoning": "string explaining the go/no-go decision"
 }`
+
+/**
+ * Filter hazards to only include those that are relevant to the route
+ * Removes expired hazards and relies on API's bounding box filtering
+ */
+function filterRelevantHazards(
+  hazards: RouteReasoningRequest['hazards'],
+  routeCoords: Array<[number, number]>
+): RouteReasoningRequest['hazards'] {
+  if (!hazards || hazards.length === 0) return []
+
+  return hazards.filter(hazard => {
+    // Filter out expired hazards
+    if (hazard.validTo) {
+      const validTo = new Date(hazard.validTo)
+      if (validTo < new Date()) {
+        return false // Hazard has expired
+      }
+    }
+
+    // The hazards API already filters by the route's bounding box,
+    // so we primarily filter out expired ones here.
+    // In production, we could add more sophisticated geometry intersection
+    // checking if the hazard includes detailed polygon data.
+    return true
+  })
+}
 
 /**
  * Calculate magnetic heading between two points (lat/lon)
@@ -107,14 +152,9 @@ function calculateMagneticHeading(
 }
 
 /**
- * Choose a conservative cruise altitude based on average magnetic heading
+ * Suggest a reasonable fallback altitude for when AI is unavailable
+ * This is just a suggestion - the AI should determine optimal altitude based on all factors
  */
-function chooseCruiseAltitude(avgHeading: number): number {
-  // Hemispheric VFR rule: 0-179 => odd thousands + 500, 180-359 => even thousands + 500
-  // Choose 3,500' for odd, 4,500' for even as conservative defaults in the demo
-  if (isNaN(avgHeading)) return 3500
-  return avgHeading >= 0 && avgHeading < 180 ? 3500 : 4500
-}
 
 /**
  * Calculate appropriate VFR cruise altitude based on magnetic heading
@@ -138,12 +178,21 @@ export async function generateRouteReasoning(
   const magHeadings = calculateMagneticHeadings(request)
   const avgHeading =
     magHeadings.reduce((sum, h) => sum + h, 0) / (magHeadings.length || 1)
-  const cruiseAltitude = chooseCruiseAltitude(avgHeading)
+
+  // Build route coordinates array for hazard filtering
+  const routeCoords: Array<[number, number]> = [request.departureCoords]
+  if (request.waypointCoords && request.waypointCoords.length > 0) {
+    routeCoords.push(...request.waypointCoords)
+  }
+  routeCoords.push(request.arrivalCoords)
+
+  // Filter hazards to only include those relevant to the route
+  const relevantHazards = filterRelevantHazards(request.hazards, routeCoords)
 
   // Check if API key is available
   if (!GEMINI_API_KEY) {
     console.warn('Gemini API key not found, using fallback reasoning')
-    return generateFallbackReasoning(request, magHeadings)
+    return generateFallbackReasoning(request, magHeadings, relevantHazards)
   }
 
   try {
@@ -156,8 +205,8 @@ export async function generateRouteReasoning(
       systemInstruction: SYSTEM_INSTRUCTION,
     })
 
-    // Build the prompt
-    const prompt = buildPrompt(request, magHeadings)
+    // Build the prompt with filtered hazards
+    const prompt = buildPrompt(request, magHeadings, relevantHazards)
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -181,7 +230,7 @@ export async function generateRouteReasoning(
       parsedResponse = JSON.parse(jsonText)
     } catch (parseError) {
       console.error('Failed to parse Gemini JSON response:', parseError)
-      return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+      return generateFallbackReasoning(request, magHeadings, relevantHazards)
     }
 
     // Cache the result
@@ -198,7 +247,7 @@ export async function generateRouteReasoning(
     } catch (error) {
     console.error('Gemini API error:', error)
     // Fall back to pre-written reasoning
-    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
+    return generateFallbackReasoning(request, magHeadings, relevantHazards)
   }
 }
 
@@ -232,42 +281,73 @@ function calculateMagneticHeadings(request: RouteReasoningRequest): number[] {
 function generateFallbackReasoning(
   request: RouteReasoningRequest,
   magHeadings: number[],
-  cruiseAltitude: number,
+  relevantHazards?: RouteReasoningRequest['hazards']
 ): RouteReasoningResponse {
+  const avgHeading = magHeadings.reduce((sum, h) => sum + h, 0) / (magHeadings.length || 1)
+  const headingDirection = avgHeading >= 0 && avgHeading < 180 ? 'eastbound' : 'westbound'
+  const ruleType = avgHeading >= 0 && avgHeading < 180 ? 'odd' : 'even'
+
+  // Determine altitude based on distance and hemispheric rule
+  const isEastbound = avgHeading >= 0 && avgHeading < 180
+  let cruiseAltitude: number
+  if (request.distance_nm < 50) {
+    cruiseAltitude = isEastbound ? 3500 : 4500
+  } else if (request.distance_nm < 150) {
+    cruiseAltitude = isEastbound ? 5500 : 6500
+  } else {
+    cruiseAltitude = isEastbound ? 7500 : 8500
+  }
+
   const segmentAnalysis: string[] = []
 
   // Departure segment
   segmentAnalysis.push(
-    `Departure from ${request.departure}: Initial climb on heading ${magHeadings[0]}°. Monitor traffic pattern and local airspace. Ensure proper clearance from Class B airspace overhead.`
+    `Departure from ${request.departure}: Initial climb on heading ${magHeadings[0]}°. Monitor traffic pattern and local airspace. Verify airspace clearances as required.`
   )
 
   // Waypoint segments
   if (request.waypoints.length > 0) {
     request.waypoints.forEach((wp, index) => {
       segmentAnalysis.push(
-        `${wp} waypoint (heading ${magHeadings[index + 1] || magHeadings[index]}°): Provides positive navigation fix. Verify position using GPS and pilotage. Monitor terrain clearance.`
+        `${wp} waypoint (heading ${magHeadings[index + 1] || magHeadings[index]}°): Provides positive navigation fix. Verify position using GPS and pilotage. Monitor terrain clearance and airspace.`
       )
     })
   }
 
   // Arrival segment
   segmentAnalysis.push(
-    `Arrival at ${request.arrival}: Begin descent planning 10-15nm out. Contact tower for landing clearance. Brief approach and pattern procedures.`
+    `Arrival at ${request.arrival}: Begin descent planning 10-15nm out. Contact tower for landing clearance if required. Brief approach and pattern procedures.`
   )
 
-  const issues =
+  // Build issues string based on route type and hazards
+  let issues =
     request.route_type === 'avoiding_airspace'
-      ? 'Route avoids SFO Class B airspace. Monitor GPS position to maintain lateral separation. Higher terrain in East Bay hills requires careful altitude management. Weather patterns from the Bay can affect VFR conditions.'
-      : 'Direct route may require Class B clearance. Monitor ATC frequencies and ensure transponder is operational. Be prepared for potential rerouting.'
+      ? `Route planned to avoid restricted airspace. Monitor GPS position to maintain lateral separation from controlled airspace. Cruise at ${cruiseAltitude}' MSL per hemispheric rule for ${headingDirection} flight.`
+      : `Direct route. Monitor ATC frequencies and ensure compliance with airspace requirements. Cruise at ${cruiseAltitude}' MSL per hemispheric rule.`
+
+  // Add hazard warnings if present
+  if (relevantHazards && relevantHazards.length > 0) {
+    const hazardSummary = relevantHazards
+      .slice(0, 3)
+      .map(h => `${h.kind}: ${h.phenomenon || 'unknown'}`)
+      .join('; ')
+    issues += ` ACTIVE HAZARDS along route: ${hazardSummary}${relevantHazards.length > 3 ? ` and ${relevantHazards.length - 3} more` : ''}.`
+  }
+
+  // Determine Go/No-Go based on hazards
+  const hasSignificantHazards = relevantHazards && relevantHazards.some(h =>
+    h.severity && (h.severity.toLowerCase().includes('severe') || h.severity.toLowerCase().includes('extreme'))
+  )
 
   return {
     Altitude: cruiseAltitude,
     Issues: issues,
     Segment_Analysis: segmentAnalysis,
     Mag_Heading: magHeadings,
-    Go_NoGo: true,
-    Go_NoGo_Reasoning:
-      'Route is viable for VFR flight under normal conditions. Verify current weather, NOTAMs, and TFRs before departure. Ensure aircraft performance is adequate for terrain clearance.',
+    Go_NoGo: !hasSignificantHazards,
+    Go_NoGo_Reasoning: hasSignificantHazards
+      ? `NO-GO: Severe weather hazards detected along route corridor. Review hazards and consider alternative routing or delaying flight.`
+      : `GO: Route is viable for VFR flight. Cruise altitude ${cruiseAltitude}' MSL follows hemispheric rule (${headingDirection}, ${ruleType} thousands + 500). Maintain VFR cloud clearances per 14 CFR 91.155. Verify current weather, NOTAMs, and TFRs before departure. Ensure aircraft performance is adequate for terrain clearance.`,
   }
 }
 
@@ -277,6 +357,7 @@ function generateFallbackReasoning(
 function buildPrompt(
   request: RouteReasoningRequest,
   magHeadings: number[],
+  relevantHazards?: RouteReasoningRequest['hazards']
 ): string {
   const {
     departure,
@@ -298,7 +379,19 @@ function buildPrompt(
 - Estimated Time: ${estimated_time_min} minutes (assuming 120 knots groundspeed)
 - Route Type: ${route_type === 'direct' ? 'Direct Route' : 'Routing to Avoid Airspace'}
 - Calculated Magnetic Headings: ${magHeadings.join('°, ')}°
-- Recommended Cruise Altitude: follow MSL (hemispheric rule)
+- Predominant Heading: ${magHeadings.length > 0 ? magHeadings[0] : 'N/A'}° (${magHeadings.length > 0 && magHeadings[0] >= 0 && magHeadings[0] < 180 ? 'Eastbound' : 'Westbound'})
+
+**VFR Hemispheric Altitude Rule (14 CFR 91.159):**
+- Magnetic course 0-179° (Eastbound): Fly ODD thousands + 500 feet MSL (3,500', 5,500', 7,500', etc.)
+- Magnetic course 180-359° (Westbound): Fly EVEN thousands + 500 feet MSL (4,500', 6,500', 8,500', etc.)
+- Use PREDOMINANT magnetic course for the entire route to determine correct altitude
+- This prevents head-on collisions by vertical separation
+
+**VFR Cloud Clearance Requirements (14 CFR 91.155 - "3152 Rule" below 10,000 MSL):**
+- 3 statute miles visibility
+- 1,000 feet above clouds
+- 500 feet below clouds
+- 2,000 feet horizontal from clouds
 
 `
 
@@ -313,42 +406,57 @@ ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
   if (request.weather && request.weather.length > 0) {
     prompt += `**Weather Observations (METAR/TAF):**\n`
     prompt += request.weather.map(w => {
-      const metar = w.metar ? (w.metar.raw_text || JSON.stringify(w.metar).slice(0,200)) : 'No METAR'
-      const taf = w.taf ? (w.taf.raw_text || JSON.stringify(w.taf).slice(0,200)) : 'No TAF'
-      return `- ${w.station}: METAR=${metar}; TAF=${taf}`
+      // Aviation Weather API returns: rawOb (METAR) and rawTAF (TAF)
+      const metar = w.metar ? (w.metar.rawOb || w.metar.raw_text || 'No observation') : 'No METAR'
+      const taf = w.taf ? (w.taf.rawTAF || w.taf.raw_text || 'No forecast') : 'No TAF'
+      const fltCat = w.metar?.fltCat || w.metar?.flightCategory || 'Unknown'
+      return `- ${w.station}: ${metar} | Flight Category: ${fltCat} | TAF: ${taf}`
     }).join('\n')
     prompt += `\n\n`
   }
 
-  // Include hazard summary if provided
-  if (request.hazards && request.hazards.length > 0) {
-    prompt += `**Active Hazards:**\n`
-    prompt += request.hazards.slice(0,10).map(h => `- ${h.kind} ${h.id}: ${h.phenomenon || 'unknown'} (${h.severity || 'unknown'})`).join('\n')
-    if (request.hazards.length > 10) {
-      prompt += `\n- ...and ${request.hazards.length - 10} more hazards`
+  // Include hazard summary if provided (using filtered hazards that affect route)
+  if (relevantHazards && relevantHazards.length > 0) {
+    prompt += `**Active Hazards Along Route (within 25nm corridor):**\n`
+    prompt += relevantHazards.slice(0,10).map(h => {
+      const validTime = h.validFrom && h.validTo
+        ? `Valid: ${new Date(h.validFrom).toLocaleString()} to ${new Date(h.validTo).toLocaleString()}`
+        : 'Time unknown'
+      return `- ${h.kind} ${h.id}: ${h.phenomenon || 'unknown'} (${h.severity || 'unknown'}) - ${validTime}`
+    }).join('\n')
+    if (relevantHazards.length > 10) {
+      prompt += `\n- ...and ${relevantHazards.length - 10} more hazards`
     }
     prompt += `\n\n`
   }
 
-  prompt += `**Airspace Considerations:**
-- SFO Class B airspace extends from 3,000' to 10,000' MSL over this region
-- Class B requires ATC clearance, two-way radio, and Mode C transponder
-- East Bay hills reach 2,000-3,000' MSL - terrain clearance critical
-- Sacramento Class D airspace at destination
+  prompt += `**General VFR Considerations:**
+- Controlled airspace (Class B/C/D) requires ATC clearance, two-way radio, and Mode C transponder
+- Special use airspace (MOAs, Restricted, Warning areas) may require avoidance or coordination
+- Terrain and obstacles require careful altitude planning for minimum clearances
+- Route is ${request.route_type === 'direct' ? 'direct' : 'avoiding airspace restrictions'}
 
 **Your Task:**
-Analyze this route for safety and provide a go/no-go recommendation. Consider:
-1. Terrain clearance (especially East Bay hills)
-2. Airspace restrictions and required clearances
-3. Navigation challenges at each waypoint
-4. Weather vulnerability (coastal fog, valley inversions)
-5. Emergency landing options
-6. Aircraft performance requirements
+Analyze this route for safety and provide a go/no-go recommendation. Select an appropriate cruise altitude considering:
+1. **Terrain clearance**: MUST provide minimum 1,000' AGL over congested areas, 500' AGL elsewhere
+   - Consider terrain along the entire route based on coordinates provided
+2. **Hemispheric altitude rule**: Follow odd/even rule based on predominant magnetic course
+3. **Airspace restrictions**: Evaluate if route intersects controlled or special use airspace
+   - Avoid or consider clearance requirements for Class B/C/D airspace
+4. **Weather conditions**: Ensure VFR cloud clearances can be maintained (3152 rule)
+   - Analyze METAR/TAF if provided for ceilings and visibility
+5. **Active hazards**: Only consider hazards within the route corridor that were provided
+6. **Distance**: Higher altitudes for longer flights (fuel efficiency, glide range)
+   - ${distance_nm.toFixed(0)}nm distance suggests ${distance_nm < 50 ? 'lower' : distance_nm < 150 ? 'mid-level' : 'higher'} altitude
+7. **Navigation challenges**: Evaluate waypoint positions and navigation reliability
+8. **Emergency landing options**: Consider terrain and population density along route
+
+You must CHOOSE the altitude yourself based on these factors - balance all considerations.
 
 Return ONLY this JSON structure (no other text):
 {
-  "Altitude": INT,
-  "Issues": "string - describe potential problems: terrain, airspace, weather, navigation challenges",
+  "Altitude": INT (you decide based on terrain, airspace, hemispheric rule, and distance),
+  "Issues": "string - describe potential problems based on coordinates, airspace, weather, navigation, hazards, cloud clearances",
   "Segment_Analysis": [
     "Segment 1: ${departure} to ${waypoints[0] || arrival} - describe terrain, climb requirements, airspace",
     ${waypoints.map((wp, i) => `"Segment ${i + 2}: ${wp} to ${waypoints[i + 1] || arrival} - analyze terrain, navigation, weather exposure"`).join(',\n    ')}
@@ -358,7 +466,7 @@ Return ONLY this JSON structure (no other text):
   "Go_NoGo_Reasoning": "string - explain the decision with specific safety factors"
 }
 
-Be specific about real hazards: mention East Bay hills terrain, SFO Class B proximity, valley weather, etc.`
+Analyze the specific route coordinates, weather data, and hazards provided. Be specific about actual conditions along this route based on the data provided, not generic assumptions.`
 
   return prompt
 }
