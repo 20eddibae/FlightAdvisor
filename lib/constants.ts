@@ -9,20 +9,26 @@ export const API_TIMEOUT = 60000
 
 // Colors for map visualization (neutral gray theme per CLAUDE.md)
 export const COLORS = {
-  // Airspace colors
-  CLASS_B_FILL: 'rgba(128, 128, 128, 0.3)',
-  CLASS_B_STROKE: 'rgba(64, 64, 64, 0.8)',
-  RESTRICTED_FILL: 'rgba(128, 128, 128, 0.25)',
-  RESTRICTED_STROKE: 'rgba(64, 64, 64, 0.7)',
+  // Airspace colors (increased opacity for better visibility)
+  CLASS_B_FILL: 'rgba(128, 128, 128, 0.4)',
+  CLASS_B_STROKE: 'rgba(64, 64, 64, 1.0)',
+  RESTRICTED_FILL: 'rgba(128, 128, 128, 0.35)',
+  RESTRICTED_STROKE: 'rgba(64, 64, 64, 0.9)',
 
   // Route colors
   ROUTE_LINE: '#2563eb',
   ROUTE_LINE_WIDTH: 3,
 
   // Marker colors
+  AIRPORT_MARKER: '#22c55e', // Green for ALL airports
+  VOR_MARKER: '#ef4444', // Red for VOR/VORTAC
+  OTHER_WAYPOINT_MARKER: '#3b82f6', // Blue for GPS_FIX, NDB, INTERSECTION, AIRPORT waypoints
+
+  // Legacy (keep for backwards compatibility)
   DEPARTURE_MARKER: '#22c55e',
   ARRIVAL_MARKER: '#ef4444',
   WAYPOINT_MARKER: '#3b82f6',
+  WAYPOINT_OTHER_MARKER: '#ef4444',
 
   // UI colors (matching shadcn neutral theme)
   PRIMARY: 'hsl(0 0% 9%)',
