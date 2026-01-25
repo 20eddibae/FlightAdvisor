@@ -73,4 +73,18 @@ export const CACHE_CONFIG = {
 
   // Maximum number of cached reasoning results
   MAX_REASONING: 5,
+
+  // Airport cache configuration
+  AIRPORT_TTL_MS: 24 * 60 * 60 * 1000,  // 24 hours
+  SPATIAL_GRID_CELL_SIZE: 0.5,           // Degrees (~35 miles at mid-latitudes)
+  MAX_SEARCH_RESULTS: 50,
+  SEARCH_DEBOUNCE_MS: 150,
+  DB_NAME: 'FlightAdvisorCache',
+  DB_VERSION: 1,
+  BULK_FETCH_LIMIT: 500,                 // Max airports per API call
+}
+
+// Feature flags
+export const FEATURE_FLAGS = {
+  USE_AIRPORT_CACHE: true,  // Set to false to revert to API calls (fallback for performance issues)
 }

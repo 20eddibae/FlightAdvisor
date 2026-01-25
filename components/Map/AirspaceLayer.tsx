@@ -52,7 +52,9 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
             ? Number(props.ceiling_msl).toLocaleString()
             : 'N/A';
 
-          const type = props.type ? props.type.replace('_', ' ') : 'Unknown';
+          const type = props.type && typeof props.type === 'string'
+            ? props.type.replace('_', ' ')
+            : 'Unknown';
           const name = props.name || 'Unknown Airspace';
 
           popupRef.current
@@ -143,6 +145,7 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
     if (map.isStyleLoaded()) {
       addLayers()
     } else {
+      // Use once() - it automatically removes itself after firing
       map.once('load', addLayers)
     }
 
