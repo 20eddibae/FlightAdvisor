@@ -95,7 +95,7 @@ export default function RouteControls({
         )}
 
         {/* Main Control Bar - Solid white for contrast */}
-        <Card className="border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2rem] p-2 bg-white relative">
+        <Card className="border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2rem] p-2 bg-white/70 backdrop-blur-sm relative">
           <CardContent className="p-0">
             <div className="p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">

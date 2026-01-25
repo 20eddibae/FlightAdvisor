@@ -55,7 +55,7 @@ export function CacheStatus() {
 
   return (
     <div className="absolute bottom-4 right-4 z-10">
-      <Card className="bg-white/95 backdrop-blur shadow-lg">
+      <Card className="bg-white/70 backdrop-blur shadow-lg">
         <CardContent className="p-3">
           <div className="flex items-center gap-2">
             {isLoading && (

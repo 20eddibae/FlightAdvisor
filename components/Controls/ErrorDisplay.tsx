@@ -18,7 +18,7 @@ export default function ErrorDisplay({
 }: ErrorDisplayProps) {
   return (
     <div className="absolute top-4  left-1/2 transform -translate-x-1/2 w-96 z-20">
-      <Alert className='bg-white' variant="destructive">
+      <Alert className='bg-white/70 backdrop-blur-sm' variant="destructive">
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           <p className="mb-3">{message}</p>
