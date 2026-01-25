@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AirportSearch } from './AirportSearch'
+import type { CachedAirport } from '@/lib/cache/types'
 
 interface RouteControlsProps {
-  onPlanRoute: (departure: string, destination: string) => void
+  onPlanRoute: (departure: string, destination: string, maxSegmentLength?: number) => void
   onClearRoute: () => void
   isCalculating: boolean
   routeInfo?: {
@@ -23,12 +24,15 @@ export default function RouteControls({
   isCalculating,
   routeInfo,
 }: RouteControlsProps) {
-  const [departure, setDeparture] = useState('KSQL')
-  const [destination, setDestination] = useState('KSMF')
+  const [departure, setDeparture] = useState<CachedAirport | null>(null)
+  const [destination, setDestination] = useState<CachedAirport | null>(null)
+  const [maxSegmentLength, setMaxSegmentLength] = useState<string>('')
   const [isVisible, setIsVisible] = useState(true)
 
   const handlePlanRoute = () => {
-    onPlanRoute(departure.trim().toUpperCase(), destination.trim().toUpperCase())
+    if (!departure || !destination) return
+    const maxLen = maxSegmentLength ? parseInt(maxSegmentLength, 10) : undefined
+    onPlanRoute(departure.id, destination.id, maxLen)
   }
 
   return (
@@ -73,41 +77,74 @@ export default function RouteControls({
           </div>
         )}
 
-        {/* Airport Code Inputs */}
+        {/* Airport Search */}
         <div className="space-y-3">
           <div>
             <Label htmlFor="departure" className="text-sm font-medium">
               Departure Airport
             </Label>
-            <Input
-              id="departure"
-              value={departure}
-              onChange={(e) => setDeparture(e.target.value)}
-              placeholder="KSQL"
-              className="mt-1 uppercase"
-              maxLength={4}
+            <AirportSearch
+              onSelect={setDeparture}
+              placeholder="Search by code or name..."
+              autoFocus
+              initialValue="KSQL"
+              className="mt-1"
             />
+            {departure && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Selected: {/^[A-Z0-9]{3,5}$/i.test(departure.id)
+                  ? `${departure.id} - ${departure.name}`
+                  : departure.name}
+              </div>
+            )}
           </div>
           <div>
             <Label htmlFor="destination" className="text-sm font-medium">
               Destination Airport
             </Label>
-            <Input
-              id="destination"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="KSMF"
-              className="mt-1 uppercase"
-              maxLength={4}
+            <AirportSearch
+              onSelect={setDestination}
+              placeholder="Search by code or name..."
+              initialValue="KSMF"
+              className="mt-1"
+            />
+            {destination && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Selected: {/^[A-Z0-9]{3,5}$/i.test(destination.id)
+                  ? `${destination.id} - ${destination.name}`
+                  : destination.name}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Advanced Settings */}
+        <div className="pt-2 border-t">
+          <Label htmlFor="maxSegment" className="text-xs text-muted-foreground font-medium mb-1.5 block">
+            Max Straight Line Length (NM)
+          </Label>
+          <div className="flex items-center gap-2">
+            <input
+              id="maxSegment"
+              type="number"
+              min="10"
+              max="1000"
+              value={maxSegmentLength}
+              onChange={(e) => setMaxSegmentLength(e.target.value)}
+              placeholder="No Limit"
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Splits long direct paths into smaller segments.
+          </p>
         </div>
 
         {/* Control Buttons */}
         <div className="flex gap-2">
           <Button
             onClick={handlePlanRoute}
-            disabled={isCalculating || !departure.trim() || !destination.trim()}
+            disabled={isCalculating || !departure || !destination}
             className="flex-1"
           >
             {isCalculating ? (

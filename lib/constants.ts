@@ -33,12 +33,23 @@ export const COLORS = {
 // Mapbox configuration
 export const MAPBOX_CONFIG = {
   STYLE: 'mapbox://styles/mapbox/outdoors-v12',
-  CENTER: [-121.9, 38.0] as [number, number], // Midpoint between KSQL and KSMF
-  ZOOM: 8,
+  CENTER: [-122.2, 37.7] as [number, number], // Bay Area
+  ZOOM: 9,
 }
 
-// Default bounding box for OpenAIP data (NorCal: KSQL–KSMF region)
-export const DEFAULT_BOUNDS: [number, number, number, number] = [-123.0, 37.0, -121.0, 39.0]
+// Default bounding box for OpenAIP data (Continental United States)
+export const DEFAULT_BOUNDS: [number, number, number, number] = [-125.0, 24.0, -66.0, 49.0]
+
+// US Regional bounds for dense data coverage (7 regions × 100 items = 700 total)
+export const US_REGIONS: { name: string; bounds: [number, number, number, number] }[] = [
+  { name: 'West Coast', bounds: [-125.0, 32.0, -114.0, 49.0] }, // CA, OR, WA
+  { name: 'Southwest', bounds: [-115.0, 31.0, -103.0, 42.0] }, // AZ, NV, UT, CO, NM
+  { name: 'North Central', bounds: [-111.0, 40.0, -96.0, 49.0] }, // MT, WY, ND, SD, NE, KS
+  { name: 'South Central', bounds: [-107.0, 25.0, -88.0, 37.0] }, // TX, OK, LA, AR
+  { name: 'Midwest', bounds: [-97.0, 37.0, -80.0, 49.0] }, // MN, IA, WI, IL, IN, MI, OH
+  { name: 'Southeast', bounds: [-92.0, 24.0, -75.0, 37.0] }, // MS, AL, GA, FL, SC, NC, TN, KY
+  { name: 'Northeast', bounds: [-82.0, 37.0, -66.0, 48.0] }, // VA, WV, MD, DE, NJ, PA, NY, New England
+]
 
 // Route calculation constants
 export const ROUTE_CONFIG = {
@@ -62,4 +73,18 @@ export const CACHE_CONFIG = {
 
   // Maximum number of cached reasoning results
   MAX_REASONING: 5,
+
+  // Airport cache configuration
+  AIRPORT_TTL_MS: 24 * 60 * 60 * 1000,  // 24 hours
+  SPATIAL_GRID_CELL_SIZE: 0.5,           // Degrees (~35 miles at mid-latitudes)
+  MAX_SEARCH_RESULTS: 50,
+  SEARCH_DEBOUNCE_MS: 150,
+  DB_NAME: 'FlightAdvisorCache',
+  DB_VERSION: 1,
+  BULK_FETCH_LIMIT: 500,                 // Max airports per API call
+}
+
+// Feature flags
+export const FEATURE_FLAGS = {
+  USE_AIRPORT_CACHE: true,  // Set to false to revert to API calls (fallback for performance issues)
 }
