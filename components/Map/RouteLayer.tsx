@@ -14,6 +14,9 @@ export default function RouteLayer({ map, coordinates }: RouteLayerProps) {
   useEffect(() => {
     if (!map || !coordinates || coordinates.length < 2) return
 
+    // Additional safety check: ensure map is fully loaded
+    if (!map.getCanvasContainer() || !map.getStyle()) return
+
     const sourceId = 'route'
     const layerId = 'route-line'
 
