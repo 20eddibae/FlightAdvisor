@@ -73,7 +73,7 @@ export async function generateRouteReasoning(
     // Use Gemini 1.5 Flash model (fast and cost-effective)
     // Note: Plan mentions "Gemini 3 Thinking" but using available model
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3-pro-preview',
       systemInstruction: SYSTEM_INSTRUCTION,
     })
 

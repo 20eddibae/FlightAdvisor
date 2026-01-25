@@ -5,7 +5,7 @@ export const GRID_SIZE = 100
 export const ROUTING_TIMEOUT = 2000
 
 // Timeout for API calls (milliseconds)
-export const API_TIMEOUT = 3500
+export const API_TIMEOUT = 60000
 
 // Colors for map visualization (neutral gray theme per CLAUDE.md)
 export const COLORS = {

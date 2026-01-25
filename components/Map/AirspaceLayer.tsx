@@ -25,58 +25,6 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
     const fillLayerId = 'airspace-fill'
     const outlineLayerId = 'airspace-outline'
 
-    // Add GeoJSON source
-    if (!map.getSource(sourceId)) {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: airspace,
-      })
-    }
-
-    // Add fill layer for airspace polygons
-    if (!map.getLayer(fillLayerId)) {
-      map.addLayer({
-        id: fillLayerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': [
-            'match',
-            ['get', 'type'],
-            'CLASS_B',
-            COLORS.CLASS_B_FILL,
-            'RESTRICTED',
-            COLORS.RESTRICTED_FILL,
-            COLORS.RESTRICTED_FILL, // default
-          ],
-          'fill-opacity': 0.6,
-        },
-      })
-    }
-
-    // Add outline layer for airspace polygons
-    if (!map.getLayer(outlineLayerId)) {
-      map.addLayer({
-        id: outlineLayerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': [
-            'match',
-            ['get', 'type'],
-            'CLASS_B',
-            COLORS.CLASS_B_STROKE,
-            'RESTRICTED',
-            COLORS.RESTRICTED_STROKE,
-            COLORS.RESTRICTED_STROKE, // default
-          ],
-          'line-width': 2,
-          'line-dasharray': [2, 2],
-        },
-      })
-    }
-
-    // Add hover effect
     const handleMouseMove = (e: mapboxgl.MapLayerMouseEvent) => {
       if (e.features && e.features.length > 0) {
         const feature = e.features[0]
@@ -110,8 +58,69 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
       popup.remove()
     }
 
-    map.on('mousemove', fillLayerId, handleMouseMove)
-    map.on('mouseleave', fillLayerId, handleMouseLeave)
+    const addLayers = () => {
+      // Add GeoJSON source
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: airspace,
+        })
+      }
+
+      // Add fill layer for airspace polygons
+      if (!map.getLayer(fillLayerId)) {
+        map.addLayer({
+          id: fillLayerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': [
+              'match',
+              ['get', 'type'],
+              'CLASS_B',
+              COLORS.CLASS_B_FILL,
+              'RESTRICTED',
+              COLORS.RESTRICTED_FILL,
+              COLORS.RESTRICTED_FILL, // default
+            ],
+            'fill-opacity': 0.6,
+          },
+        })
+      }
+
+      // Add outline layer for airspace polygons
+      if (!map.getLayer(outlineLayerId)) {
+        map.addLayer({
+          id: outlineLayerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': [
+              'match',
+              ['get', 'type'],
+              'CLASS_B',
+              COLORS.CLASS_B_STROKE,
+              'RESTRICTED',
+              COLORS.RESTRICTED_STROKE,
+              COLORS.RESTRICTED_STROKE, // default
+            ],
+            'line-width': 2,
+            'line-dasharray': [2, 2],
+          },
+        })
+      }
+
+      // Add hover effects
+      map.on('mousemove', fillLayerId, handleMouseMove)
+      map.on('mouseleave', fillLayerId, handleMouseLeave)
+    }
+
+    // Check if map style is loaded
+    if (map.isStyleLoaded()) {
+      addLayers()
+    } else {
+      map.once('load', addLayers)
+    }
 
     // Cleanup on unmount
     return () => {
