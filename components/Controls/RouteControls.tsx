@@ -16,7 +16,8 @@ import {
   Clock,
   ArrowRight,
   Cloud,
-  CloudOff
+  CloudOff,
+  Wind,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +32,8 @@ interface RouteControlsProps {
   } | null
   showCloudLayer: boolean
   onToggleCloudLayer: () => void
+  showWindLayer: boolean
+  onToggleWindLayer: () => void
 }
 
 export default function RouteControls({
@@ -40,6 +43,8 @@ export default function RouteControls({
   routeInfo,
   showCloudLayer,
   onToggleCloudLayer,
+  showWindLayer,
+  onToggleWindLayer,
 }: RouteControlsProps) {
   const [departure, setDeparture] = useState<CachedAirport | null>(null)
   const [destination, setDestination] = useState<CachedAirport | null>(null)
@@ -140,7 +145,7 @@ export default function RouteControls({
           )}
 
           {/* Main Control Bar - Solid white for contrast */}
-          <Card className="border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2rem] p-2 bg-white relative">
+          <Card className="border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[2rem] p-2 bg-white/70 backdrop-blur-sm relative">
             <CardContent className="p-0">
               <div className="p-3 sm:p-4">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -179,6 +184,19 @@ export default function RouteControls({
 
                   {/* Actions Bar */}
                   <div className="flex items-center gap-2 pt-2 sm:pt-0">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className={cn(
+                        "h-12 w-12 rounded-2xl transition-all duration-300",
+                        showWindLayer ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-400"
+                      )}
+                      onClick={onToggleWindLayer}
+                      title={showWindLayer ? "Hide Wind Barbs" : "Show Wind Barbs"}
+                    >
+                      <Wind className="w-5 h-5" />
+                    </Button>
+
                     <Button
                       variant="outline"
                       size="icon"

@@ -46,8 +46,8 @@ export default function ReasoningPanel({
 
   return (
     <Card className={cn(
-      "fixed top-0 right-0 z-40 flex flex-col overflow-hidden border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-none",
-      "bg-white w-90 h-screen"
+      "fixed top-0 right-0 z-40 flex flex-col overflow-hidden border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-l-2xl",
+      "bg-white/70 backdrop-blur-sm w-90 h-screen"
     )}>
       <>
         <CardHeader className="p-6 pb-4 border-b border-slate-50">
@@ -262,10 +262,10 @@ function StructuredReasoningDisplay({
       </div>
 
       {/* Cruise Altitude */}
-      <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-white">
-        <h3 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-2">Recommended Cruise</h3>
-        <p className="text-3xl font-black text-blue-400">{Altitude?.toLocaleString() ?? 'N/A'}' MSL</p>
-        <p className="text-[10px] text-slate-400 mt-2 font-medium">
+      <div className="p-4 bg-slate-100 border border-slate-200 rounded-2xl">
+        <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500 mb-2">Recommended Cruise</h3>
+        <p className="text-3xl font-black text-slate-700">{Altitude?.toLocaleString() ?? 'N/A'}' MSL</p>
+        <p className="text-[10px] text-slate-600 mt-2 font-medium">
           Hemispheric VFR Rule
         </p>
       </div>

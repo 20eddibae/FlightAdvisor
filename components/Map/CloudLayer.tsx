@@ -57,13 +57,13 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
             'circle-color': [
               'case',
               // VFR - Very light green/blue tint (rgba(0, 255, 0, 0.1))
-              ['==', ['get', 'fltcat'], 'VFR'], 'rgba(0, 255, 0, 0.1)',
-              // MVFR - Yellow overlay (rgba(255, 255, 0, 0.25))
+              ['==', ['get', 'fltcat'], 'VFR'], 'rgba(198, 198, 198, 0.1)',
+              // MVFR - Yellow overlay (rgba(172, 172, 172, 0.25))
               ['==', ['get', 'fltcat'], 'MVFR'], 'rgba(255, 255, 0, 0.25)',
-              // IFR - Orange/Red overlay (rgba(255, 140, 0, 0.4))
+              // IFR - Orange/Red overlay (rgba(149, 149, 149, 0.4))
               ['==', ['get', 'fltcat'], 'IFR'], 'rgba(255, 140, 0, 0.4)',
-              // LIFR - Dark red overlay (rgba(255, 0, 0, 0.5))
-              ['==', ['get', 'fltcat'], 'LIFR'], 'rgba(255, 0, 0, 0.5)',
+              // LIFR - Dark red overlay (rgba(107, 107, 107, 0.5))
+              ['==', ['get', 'fltcat'], 'LIFR'], 'rgba(53, 53, 53, 0.5)',
               // Unknown - Light gray
               'rgba(128, 128, 128, 0.1)'
             ],

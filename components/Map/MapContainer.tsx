@@ -7,6 +7,7 @@ import RouteControls from '../Controls/RouteControls'
 import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
 import { CacheStatus } from '../Controls/CacheStatus'
+import FlightSelector from '../Controls/FlightSelector'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { simplifyAirspace } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
@@ -14,6 +15,7 @@ import type { MapRef } from './MapView'
 import { FEATURE_FLAGS, DEFAULT_BOUNDS } from '@/lib/constants'
 import type { RouteReasoningResponse } from '@/lib/api/gemini'
 import { useAirportCache } from '../Cache/AirportCacheProvider'
+import type { SavedFlight } from '@/lib/supabase/client'
 
 // Dynamically import map layers to avoid SSR issues with Mapbox GL
 const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
@@ -21,10 +23,11 @@ const WaypointMarkers = dynamic(() => import('./WaypointMarkers'), { ssr: false 
 const AirspaceLayer = dynamic(() => import('./AirspaceLayer'), { ssr: false })
 const RouteLayer = dynamic(() => import('./RouteLayer'), { ssr: false })
 const CloudLayer = dynamic(() => import('./CloudLayer'), { ssr: false })
+const WindLayer = dynamic(() => import('./WindLayer'), { ssr: false })
 
 
 export default function MapContainer() {
-  const { cache, getAirportsInViewport, getAirportById, addWeatherStations, isInitialized } = useAirportCache()
+  const { cache, getAirportsInViewport, getAirportById, isInitialized } = useAirportCache()
 
   const [map, setMap] = useState<MapRef | null>(null)
   const [airports, setAirports] = useState<Airport[]>([])
@@ -61,6 +64,7 @@ export default function MapContainer() {
   // Cloud data for map visualization (METAR GeoJSON)
   const [cloudData, setCloudData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [showCloudLayer, setShowCloudLayer] = useState(true) // Toggle for cloud visibility
+  const [showWindLayer, setShowWindLayer] = useState(false) // Toggle for wind visibility
   const lastCloudFetchRef = useRef<number>(0) // Start at 0 to force initial fetch
 
   // New state for global airspace loading
@@ -91,8 +95,6 @@ export default function MapContainer() {
   // Keep existing effects for cleanup, cloud data, map load...
 
   // ... (loadDataForViewport, handleMapLoad exist above, unchanged until handlePlanRoute) ...
-
-
 
   // Debounce timer for viewport updates
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -160,16 +162,14 @@ export default function MapContainer() {
     })
 
     // Check if we need to refresh (5-minute cache)
-    if (now - lastCloudFetchRef.current < CLOUD_CACHE_TTL) {
-      // Still within cache window, skip fetch
-      console.log('⏭️ Skipping cloud fetch - still within cache window')
-      return
-    }
 
     try {
       // Get current viewport bounds
       const bounds = mapInstance.getBounds()
-      if (!bounds) return
+      if (!bounds) {
+        console.warn('⚠️ Map bounds not available')
+        return
+      }
 
       const bbox = [
         bounds.getWest(),
@@ -230,8 +230,8 @@ export default function MapContainer() {
 
         console.log(`🌡️ Converting ${weatherStationAirports.length} weather stations to airport objects`)
 
-        // Add weather stations to cache for searchability
-        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized) {
+        // Insert weather stations into the cache spatial index
+        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized && cache) {
           const cachedWeatherStations = weatherStationAirports.map(ap => ({
             id: ap.id,
             name: ap.name,
@@ -240,19 +240,15 @@ export default function MapContainer() {
             elevation: ap.elevation,
             type: ap.type,
             notes: ap.notes,
-            _metadata: ap._metadata || {
-              isWeatherStation: true,
-              source: 'weather-api' as const,
-              cachedAt: Date.now()
+            _metadata: {
+              ...(ap._metadata || {}),
+              source: 'weather-api' as const
             }
           }))
 
-          // Insert weather stations into the cache spatial index
-          // Use the destructured function instead of accessing cache directly
-          addWeatherStations(cachedWeatherStations)
+          cache.addWeatherStations(cachedWeatherStations)
           console.log(`✅ Added ${cachedWeatherStations.length} weather stations to cache (searchable)`)
         }
-
         // Merge weather stations with existing airports
         // Remove old weather station entries first to avoid duplicates
         setAirports(prevAirports => {
@@ -276,7 +272,7 @@ export default function MapContainer() {
       console.error('❌ Failed to fetch cloud data:', error)
       // Don't show error to user - cloud data is supplementary
     }
-  }, [addWeatherStations, isInitialized])
+  }, [cache, isInitialized])
 
   const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
@@ -1092,11 +1088,148 @@ export default function MapContainer() {
     console.log('☁️ Cloud layer toggled:', !showCloudLayer)
   }, [showCloudLayer])
 
+  const handleToggleWindLayer = useCallback(() => {
+    setShowWindLayer((prev) => !prev)
+    console.log('💨 Wind layer toggled:', !showWindLayer)
+  }, [showWindLayer])
+
   const handleDismissError = useCallback(() => {
     setError(null)
   }, [])
 
+  const handleNewRoute = useCallback(() => {
+    console.log('📝 Starting new route')
+    handleClearRoute()
+  }, [])
 
+  const handleLoadFlight = useCallback(async (flight: SavedFlight) => {
+    console.log('📥 Loading saved flight:', flight.name)
+
+    // Clear existing route
+    handleClearRoute()
+
+    // Set the route data directly
+    const loadedRoute: RouteResult = {
+      coordinates: flight.coordinates as [number, number][],
+      waypoints: flight.waypoints,
+      distance_nm: flight.distance_nm,
+      estimated_time_min: flight.estimated_time_min,
+      type: flight.route_type,
+    }
+
+    setRoutes([loadedRoute]) // Use setRoutes array
+    setSelectedRouteIndex(0) // Select it
+    setCurrentDeparture(flight.departure)
+    setCurrentArrival(flight.arrival)
+
+    // Recalculate reasoning with loaded route
+    setIsLoadingReasoning(true)
+    setReasoning(null)
+
+    try {
+      // Get departure and arrival airport coordinates
+      const departure = getAirportById(flight.departure)
+      const arrival = getAirportById(flight.arrival)
+
+      if (!departure || !arrival) {
+        console.warn('Could not find airport coordinates for loaded flight')
+        setIsLoadingReasoning(false)
+        return
+      }
+
+      // Extract waypoint coordinates from route
+      const waypointCoords: [number, number][] = loadedRoute.coordinates.slice(1, -1) as [number, number][]
+
+      // Calculate bounds
+      const allLons = loadedRoute.coordinates.map(c => c[0])
+      const allLats = loadedRoute.coordinates.map(c => c[1])
+      const minLon = Math.min(...allLons)
+      const maxLon = Math.max(...allLons)
+      const minLat = Math.min(...allLats)
+      const maxLat = Math.max(...allLats)
+      const bounds = `${minLon},${minLat},${maxLon},${maxLat}`
+
+      // Fetch weather
+      const validAirportIds = [flight.departure, flight.arrival].filter(id =>
+        /^K[A-Z]{3}$/.test(id) || /^[A-Z]{4}$/.test(id)
+      )
+      const weatherIds = validAirportIds.join(',')
+
+      const [weatherRes, hazardsRes] = await Promise.all([
+        validAirportIds.length > 0
+          ? fetch(`/api/weather?ids=${encodeURIComponent(weatherIds)}`)
+          : Promise.resolve({ ok: false } as Response),
+        fetch(`/api/hazards?bounds=${encodeURIComponent(bounds)}`),
+      ])
+
+      let weatherData: any = null
+      let hazardsData: any = null
+
+      if (weatherRes && weatherRes.ok) {
+        try {
+          weatherData = await weatherRes.json()
+          if (weatherData?.stations && weatherData.stations.length > 0) {
+            setWeather(weatherData.stations)
+          } else {
+            setWeather([])
+          }
+        } catch (e) {
+          setWeather([])
+        }
+      } else {
+        setWeather([])
+      }
+
+      if (hazardsRes && hazardsRes.ok) {
+        try { hazardsData = await hazardsRes.json() } catch (e) { console.warn('Failed parsing hazards') }
+      }
+
+      const response = await fetch('/api/reasoning', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          departure: flight.departure,
+          arrival: flight.arrival,
+          departureCoords: [departure.lon, departure.lat],
+          arrivalCoords: [arrival.lon, arrival.lat],
+          waypoints: loadedRoute.waypoints,
+          waypointCoords: waypointCoords,
+          distance_nm: loadedRoute.distance_nm,
+          estimated_time_min: loadedRoute.estimated_time_min,
+          route_type: loadedRoute.type,
+          weather: weatherData?.stations || undefined,
+          hazards: hazardsData?.hazards || undefined,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.reasoning) {
+          setReasoning(data.reasoning)
+          setShowReasoning(true) // Auto-show reasoning panel
+        }
+      }
+    } catch (error) {
+      console.error('Error loading flight reasoning:', error)
+    } finally {
+      setIsLoadingReasoning(false)
+    }
+
+    // Zoom map to route bounds if map exists
+    if (map && flight.coordinates.length >= 2) {
+      const lons = flight.coordinates.map(c => c[0])
+      const lats = flight.coordinates.map(c => c[1])
+      const minLon = Math.min(...lons)
+      const maxLon = Math.max(...lons)
+      const minLat = Math.min(...lats)
+      const maxLat = Math.max(...lats)
+
+      map.fitBounds(
+        [[minLon, minLat], [maxLon, maxLat]],
+        { padding: 100, duration: 1000 }
+      )
+    }
+  }, [map, getAirportById, handleClearRoute])
 
   return (
     <>
@@ -1113,6 +1246,7 @@ export default function MapContainer() {
       )}
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
       {map && cloudData && showCloudLayer && <CloudLayer map={map} cloudData={cloudData} />}
+      {map && <WindLayer map={map} visible={showWindLayer} />}
       {map && displayedAirports.length > 0 && !isCalculating ? (
         <>
           <AirportMarkers
@@ -1156,6 +1290,8 @@ export default function MapContainer() {
         } : null}
         showCloudLayer={showCloudLayer}
         onToggleCloudLayer={handleToggleCloudLayer}
+        showWindLayer={showWindLayer}
+        onToggleWindLayer={handleToggleWindLayer}
       />
 
       <ReasoningPanel
@@ -1171,6 +1307,21 @@ export default function MapContainer() {
           estimated_time_min: currentRoute.estimated_time_min,
         } : undefined}
         onSegmentSelect={setHighlightedSegmentIndex}
+      />
+
+      <FlightSelector
+        currentRoute={route && currentDeparture && currentArrival ? {
+          departure: currentDeparture,
+          arrival: currentArrival,
+          distance_nm: route.distance_nm,
+          estimated_time_min: route.estimated_time_min,
+          type: route.type,
+          waypoints: route.waypoints,
+          coordinates: route.coordinates as [number, number][],
+          cruise_altitude: reasoning?.Altitude,
+        } : undefined}
+        onLoadFlight={handleLoadFlight}
+        onNewRoute={handleNewRoute}
       />
 
       <CacheStatus />
