@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AirportSearch } from './AirportSearch'
+import type { CachedAirport } from '@/lib/cache/types'
 
 interface RouteControlsProps {
   onPlanRoute: (departure: string, destination: string) => void
@@ -23,11 +24,12 @@ export default function RouteControls({
   isCalculating,
   routeInfo,
 }: RouteControlsProps) {
-  const [departure, setDeparture] = useState('KSQL')
-  const [destination, setDestination] = useState('KSMF')
+  const [departure, setDeparture] = useState<CachedAirport | null>(null)
+  const [destination, setDestination] = useState<CachedAirport | null>(null)
 
   const handlePlanRoute = () => {
-    onPlanRoute(departure.trim().toUpperCase(), destination.trim().toUpperCase())
+    if (!departure || !destination) return
+    onPlanRoute(departure.id, destination.id)
   }
   return (
     <Card className="absolute top-4 left-4 bg-white shadow-lg z-10">
@@ -56,33 +58,44 @@ export default function RouteControls({
           </div>
         )}
 
-        {/* Airport Code Inputs */}
+        {/* Airport Search */}
         <div className="space-y-3">
           <div>
             <Label htmlFor="departure" className="text-sm font-medium">
               Departure Airport
             </Label>
-            <Input
-              id="departure"
-              value={departure}
-              onChange={(e) => setDeparture(e.target.value)}
-              placeholder="KSQL"
-              className="mt-1 uppercase"
-              maxLength={4}
+            <AirportSearch
+              onSelect={setDeparture}
+              placeholder="Search by code or name..."
+              autoFocus
+              initialValue="KSQL"
+              className="mt-1"
             />
+            {departure && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Selected: {/^[A-Z0-9]{3,5}$/i.test(departure.id)
+                  ? `${departure.id} - ${departure.name}`
+                  : departure.name}
+              </div>
+            )}
           </div>
           <div>
             <Label htmlFor="destination" className="text-sm font-medium">
               Destination Airport
             </Label>
-            <Input
-              id="destination"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="KSMF"
-              className="mt-1 uppercase"
-              maxLength={4}
+            <AirportSearch
+              onSelect={setDestination}
+              placeholder="Search by code or name..."
+              initialValue="KSMF"
+              className="mt-1"
             />
+            {destination && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Selected: {/^[A-Z0-9]{3,5}$/i.test(destination.id)
+                  ? `${destination.id} - ${destination.name}`
+                  : destination.name}
+              </div>
+            )}
           </div>
         </div>
 
@@ -90,7 +103,7 @@ export default function RouteControls({
         <div className="flex gap-2">
           <Button
             onClick={handlePlanRoute}
-            disabled={isCalculating || !departure.trim() || !destination.trim()}
+            disabled={isCalculating || !departure || !destination}
             className="flex-1"
           >
             {isCalculating ? (
@@ -110,12 +123,6 @@ export default function RouteControls({
           >
             Clear
           </Button>
-        </div>
-
-        {/* Demo Information */}
-        <div className="text-xs text-muted-foreground pt-2 border-t">
-          <p className="font-medium mb-1">Available Airports:</p>
-          <p>KSQL (San Carlos), KSMF (Sacramento Executive)</p>
         </div>
       </CardContent>
     </Card>
