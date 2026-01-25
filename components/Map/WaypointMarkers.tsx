@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { Waypoint } from '@/lib/geojson'
 import { COLORS } from '@/lib/constants'
@@ -10,95 +10,117 @@ interface WaypointMarkersProps {
   waypoints: Waypoint[]
 }
 
+// Styles constants for cleaner code
+const MARKER_STYLES = {
+  width: '14px',
+  height: '14px',
+  borderRadius: '2px', // Square with slight roundness
+  transform: 'rotate(45deg)', // Diamond shape
+  cursor: 'pointer',
+  backgroundColor: COLORS.WAYPOINT_MARKER,
+  border: '1px solid white',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+}
+
+const LABEL_STYLES = {
+  position: 'absolute',
+  fontWeight: '600',
+  fontSize: '10px',
+  color: COLORS.WAYPOINT_MARKER,
+  textShadow: '1px 1px 0px white, -1px -1px 0px white, 1px -1px 0px white, -1px 1px 0px white',
+  marginLeft: '18px',
+  marginTop: '-8px',
+  transform: 'rotate(-45deg)', // Counter-rotate so text is upright
+  whiteSpace: 'nowrap',
+  pointerEvents: 'none',
+  display: 'none',
+  opacity: '0',
+  transition: 'opacity 0.2s ease',
+}
+
 export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps) {
+  // Use a ref to track markers for cleanup, independent of render cycle
+  const markersRef = useRef<mapboxgl.Marker[]>([])
+
   useEffect(() => {
     // Basic validation
     if (!map || waypoints.length === 0) return
-
-    // Additional safety check: ensure map is fully loaded
     if (!map.getCanvasContainer()) return
 
-    const markers: mapboxgl.Marker[] = []
+    // Cleanup existing markers
+    markersRef.current.forEach(m => m.remove())
+    markersRef.current = []
 
-    try {
-      waypoints.forEach((waypoint) => {
-        // Create custom marker element
-        const el = document.createElement('div')
-        el.className = 'waypoint-marker'
-        el.style.width = '14px' // Slightly smaller for waypoints
-        el.style.height = '14px'
-        el.style.borderRadius = '2px' // Square with slight roundness for VOR/Waypoint look
-        el.style.transform = 'rotate(45deg)' // Diamond shape
-        el.style.cursor = 'pointer'
-        el.style.backgroundColor = COLORS.WAYPOINT_MARKER
-        el.style.border = '1px solid white'
-        el.style.boxShadow = '0 1px 2px rgba(0,0,0,0.3)'
+    const createMarkerElement = (waypoint: Waypoint) => {
+      const el = document.createElement('div')
+      el.className = 'waypoint-marker'
 
-        // Create popup with waypoint information
-        const popup = new mapboxgl.Popup({
-          offset: 12,
-          closeButton: false,
-        }).setHTML(`
-          <div style="padding: 4px; font-family: sans-serif;">
-            <strong style="color: ${COLORS.WAYPOINT_MARKER}">${waypoint.id}</strong><br/>
-            <span style="font-size: 11px;">${waypoint.name}</span><br/>
-            <span style="font-size: 10px; color: #666;">
-              Type: ${waypoint.type}<br/>
-              ${waypoint.frequency ? `Freq: ${waypoint.frequency}<br/>` : ''}
-            </span>
-          </div>
-        `)
+      // Apply styles
+      Object.assign(el.style, MARKER_STYLES)
 
-        // Create marker
-        const marker = new mapboxgl.Marker(el)
-          .setLngLat([waypoint.lon, waypoint.lat])
-          .setPopup(popup)
-          .addTo(map)
+      // Hover Interaction
+      const labelEl = document.createElement('div')
+      labelEl.className = 'waypoint-label'
+      labelEl.textContent = waypoint.name
+      Object.assign(labelEl.style, LABEL_STYLES)
+      el.appendChild(labelEl)
 
-        // Create label element that appears on hover
-        const labelEl = document.createElement('div')
-        labelEl.className = 'waypoint-label'
-        labelEl.textContent = waypoint.name
-        labelEl.style.position = 'absolute'
-        labelEl.style.fontWeight = '600'
-        labelEl.style.fontSize = '10px'
-        labelEl.style.color = COLORS.WAYPOINT_MARKER
-        labelEl.style.textShadow = '1px 1px 0px white, -1px -1px 0px white, 1px -1px 0px white, -1px 1px 0px white'
-        labelEl.style.marginLeft = '18px'
-        labelEl.style.marginTop = '-8px'
-        labelEl.style.transform = 'rotate(-45deg)' // Counter-rotate so text is upright
-        labelEl.style.whiteSpace = 'nowrap'
-        labelEl.style.pointerEvents = 'none'
-        labelEl.style.display = 'none'
-        labelEl.style.opacity = '0'
-        labelEl.style.transition = 'opacity 0.2s ease'
-
-        // Add hover interaction
-        el.addEventListener('mouseenter', () => {
-          labelEl.style.display = 'block'
-          // Small delay to trigger transition
-          setTimeout(() => {
-            if (labelEl) labelEl.style.opacity = '1'
-          }, 0)
+      el.addEventListener('mouseenter', () => {
+        labelEl.style.display = 'block'
+        requestAnimationFrame(() => {
+          labelEl.style.opacity = '1'
         })
-
-        el.addEventListener('mouseleave', () => {
-          if (labelEl) labelEl.style.opacity = '0'
-          setTimeout(() => {
-            if (labelEl) labelEl.style.display = 'none'
-          }, 200)
-        })
-
-        el.appendChild(labelEl)
-        markers.push(marker)
       })
-    } catch (err) {
-      console.warn('Error creating waypoint markers:', err)
+
+      el.addEventListener('mouseleave', () => {
+        labelEl.style.opacity = '0'
+        setTimeout(() => {
+          // Check if it's still hidden before setting display none (simple debounce)
+          if (labelEl.style.opacity === '0') {
+            labelEl.style.display = 'none'
+          }
+        }, 200)
+      })
+
+      return el
     }
 
-    // Cleanup on unmount
+    const popupHTML = (w: Waypoint) => `
+      <div style="padding: 4px; font-family: sans-serif;">
+        <strong style="color: ${COLORS.WAYPOINT_MARKER}">${w.id}</strong><br/>
+        <span style="font-size: 11px;">${w.name}</span><br/>
+        <span style="font-size: 10px; color: #666;">
+          Type: ${w.type}<br/>
+          ${w.frequency ? `Freq: ${w.frequency}<br/>` : ''}
+        </span>
+      </div>
+    `
+
+    // Batch creation
+    const newMarkers: mapboxgl.Marker[] = []
+
+    waypoints.forEach(waypoint => {
+      const el = createMarkerElement(waypoint)
+
+      const popup = new mapboxgl.Popup({
+        offset: 12,
+        closeButton: false,
+      }).setHTML(popupHTML(waypoint))
+
+      const marker = new mapboxgl.Marker(el)
+        .setLngLat([waypoint.lon, waypoint.lat])
+        .setPopup(popup)
+        .addTo(map)
+
+      newMarkers.push(marker)
+    })
+
+    markersRef.current = newMarkers
+
+    // Cleanup function
     return () => {
-      markers.forEach((marker) => marker.remove())
+      markersRef.current.forEach(marker => marker.remove())
+      markersRef.current = []
     }
   }, [map, waypoints])
 

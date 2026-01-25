@@ -33,8 +33,8 @@ export const COLORS = {
 // Mapbox configuration
 export const MAPBOX_CONFIG = {
   STYLE: 'mapbox://styles/mapbox/outdoors-v12',
-  CENTER: [-95.5, 37.0] as [number, number], // Center of continental United States
-  ZOOM: 4,
+  CENTER: [-122.2, 37.7] as [number, number], // Bay Area
+  ZOOM: 9,
 }
 
 // Default bounding box for OpenAIP data (Continental United States)

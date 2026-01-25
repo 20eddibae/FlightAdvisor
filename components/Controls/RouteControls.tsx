@@ -8,7 +8,7 @@ import { AirportSearch } from './AirportSearch'
 import type { CachedAirport } from '@/lib/cache/types'
 
 interface RouteControlsProps {
-  onPlanRoute: (departure: string, destination: string) => void
+  onPlanRoute: (departure: string, destination: string, maxSegmentLength?: number) => void
   onClearRoute: () => void
   isCalculating: boolean
   routeInfo?: {
@@ -26,13 +26,16 @@ export default function RouteControls({
 }: RouteControlsProps) {
   const [departure, setDeparture] = useState<CachedAirport | null>(null)
   const [destination, setDestination] = useState<CachedAirport | null>(null)
+  const [maxSegmentLength, setMaxSegmentLength] = useState<string>('')
 
   const handlePlanRoute = () => {
     if (!departure || !destination) return
-    onPlanRoute(departure.id, destination.id)
+    const maxLen = maxSegmentLength ? parseInt(maxSegmentLength, 10) : undefined
+    onPlanRoute(departure.id, destination.id, maxLen)
   }
+
   return (
-    <Card className="absolute top-4 left-4 bg-white shadow-lg z-10">
+    <Card className="absolute top-4 left-4 bg-white shadow-lg z-10 w-80">
       <CardHeader>
         <CardTitle className="text-lg">FlightAdvisor</CardTitle>
         <CardDescription>AI-Powered Flight Planning</CardDescription>
@@ -99,6 +102,28 @@ export default function RouteControls({
           </div>
         </div>
 
+        {/* Advanced Settings */}
+        <div className="pt-2 border-t">
+          <Label htmlFor="maxSegment" className="text-xs text-muted-foreground font-medium mb-1.5 block">
+            Max Straight Line Length (NM)
+          </Label>
+          <div className="flex items-center gap-2">
+            <input
+              id="maxSegment"
+              type="number"
+              min="10"
+              max="1000"
+              value={maxSegmentLength}
+              onChange={(e) => setMaxSegmentLength(e.target.value)}
+              placeholder="No Limit"
+              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Splits long direct paths into smaller segments.
+          </p>
+        </div>
+
         {/* Control Buttons */}
         <div className="flex gap-2">
           <Button
@@ -123,6 +148,12 @@ export default function RouteControls({
           >
             Clear
           </Button>
+        </div>
+
+        {/* Demo Information */}
+        <div className="text-xs text-muted-foreground pt-2 border-t">
+          <p className="font-medium mb-1">Available Airports:</p>
+          <p>KSQL (San Carlos), KSMF (Sacramento Executive)</p>
         </div>
       </CardContent>
     </Card>

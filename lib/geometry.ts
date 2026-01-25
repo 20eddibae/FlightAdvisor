@@ -47,6 +47,22 @@ export function calculateBearing(start: Position, end: Position): number {
 }
 
 /**
+ * Calculate the perpendicular distance from a point to a line segment (in nautical miles)
+ */
+export function calculateDistanceFromLine(
+  point: Position,
+  lineStart: Position,
+  lineEnd: Position
+): number {
+  const pt = turf.point(point)
+  const line = turf.lineString([lineStart, lineEnd])
+  const distanceKm = turf.pointToLineDistance(pt, line, { units: 'kilometers' })
+
+  // Convert to nautical miles
+  return distanceKm / 1.852
+}
+
+/**
  * Create a bounding box around two points with optional padding (in degrees)
  */
 export function createBoundingBox(
@@ -152,5 +168,35 @@ export function interpolateLine(
 
   points.push(end)
 
+  return points
+}
+
+/**
+ * Subdivide a line segment into smaller segments with maximum length
+ */
+export function subdivideSegment(
+  start: Position,
+  end: Position,
+  maxSegmentLenNm: number
+): Position[] {
+  const distanceNm = calculateDistance(start, end)
+
+  if (distanceNm <= maxSegmentLenNm) {
+    return [start, end]
+  }
+
+  const numSegments = Math.ceil(distanceNm / maxSegmentLenNm)
+  const line = turf.lineString([start, end])
+  const TotalDistKm = turf.length(line, { units: 'kilometers' })
+  const stepKm = TotalDistKm / numSegments
+
+  const points: Position[] = [start]
+
+  for (let i = 1; i < numSegments; i++) {
+    const along = turf.along(line, stepKm * i, { units: 'kilometers' })
+    points.push(along.geometry.coordinates)
+  }
+
+  points.push(end)
   return points
 }

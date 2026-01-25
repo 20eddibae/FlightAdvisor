@@ -311,9 +311,8 @@ export default function MapContainer() {
     console.log('Map initialization complete')
   }, [loadDataForViewport, isInitialized])
 
-  const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string) => {
-    console.log('🛫 Planning route:', departureCode, '→', destinationCode)
-
+  const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string, maxSegmentLength?: number) => {
+    console.log('🛫 Planning route:', departureCode, '→', destinationCode, maxSegmentLength ? `(Max Segment: ${maxSegmentLength} NM)` : '')
     // Clear any previous errors
     setError(null)
 
@@ -407,6 +406,7 @@ export default function MapContainer() {
         arrival,
         airspace,
         waypoints,
+        maxSegmentLength,
       })
 
       if (!routeResult) {
