@@ -14,7 +14,7 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
   useEffect(() => {
     if (!map || airports.length === 0) return
 
-    // Additional safety check: ensure map is fully loaded
+    // Safety check: ensure map container is available
     if (!map.getCanvasContainer()) return
 
     const markers: mapboxgl.Marker[] = []

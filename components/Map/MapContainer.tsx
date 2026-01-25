@@ -26,7 +26,7 @@ export default function MapContainer() {
 
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [isCalculating, setIsCalculating] = useState(false)
-  const [reasoning, setReasoning] = useState<string | null>(null)
+  const [reasoning, setReasoning] = useState<RouteReasoningResponse | null>(null)
   const [isLoadingReasoning, setIsLoadingReasoning] = useState(false)
   const [showReasoning, setShowReasoning] = useState(false)
 
@@ -129,13 +129,13 @@ export default function MapContainer() {
 
     try {
       // Find departure and arrival airports
-      const departure = airports.find((a) => a.id === 'KSQL')
-      const arrival = airports.find((a) => a.id === 'KSMF')
+      const departure = airports.find((a) => a.id === departureCode)
+      const arrival = airports.find((a) => a.id === destinationCode)
 
       if (!departure || !arrival) {
         setError({
           title: 'Airport Not Found',
-          message: 'Could not find KSQL or KSMF in OpenAIP data. Ensure OPEN_AIP_API_KEY is set and the NorCal region is loaded.',
+          message: `Could not find ${!departure ? departureCode : destinationCode} airport in the data. Please check the airport code.`,
         })
         setIsCalculating(false)
         return
@@ -165,6 +165,9 @@ export default function MapContainer() {
       setReasoning(null)
 
       try {
+        // Extract waypoint coordinates from route
+        const waypointCoords = routeResult.coordinates.slice(1, -1) as Array<[number, number]>
+
         const response = await fetch('/api/reasoning', {
           method: 'POST',
           headers: {
@@ -176,6 +179,7 @@ export default function MapContainer() {
             departureCoords: [departure.lon, departure.lat],
             arrivalCoords: [arrival.lon, arrival.lat],
             waypoints: routeResult.waypoints,
+            waypointCoords: waypointCoords,
             distance_nm: routeResult.distance_nm,
             estimated_time_min: routeResult.estimated_time_min,
             route_type: routeResult.type,
@@ -236,7 +240,7 @@ export default function MapContainer() {
         <ErrorDisplay
           title={error.title}
           message={error.message}
-          onRetry={error.title.includes('Route') ? handlePlanRoute : undefined}
+          onRetry={undefined}
           onDismiss={handleDismissError}
         />
       )}

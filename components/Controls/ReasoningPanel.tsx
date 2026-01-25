@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import type { RouteReasoningResponse } from '@/lib/api/gemini'
 
 interface ReasoningPanelProps {
-  reasoning: string | null
+  reasoning: RouteReasoningResponse | null
   isLoading: boolean
   isVisible: boolean
   onToggle: () => void
@@ -34,11 +34,11 @@ export default function ReasoningPanel({
 
       {/* Reasoning Panel */}
       {isVisible && (
-        <Card className="absolute top-16 right-4 bottom-4 w-96 shadow-lg z-10 overflow-hidden flex flex-col">
+        <Card className="absolute top-16 right-4 bottom-4 bg-white w-96 shadow-lg z-10 overflow-hidden flex flex-col">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Route Reasoning</CardTitle>
             <p className="text-xs text-muted-foreground">
-              AI-generated flight instructor explanations
+              AI-generated flight instructor analysis
             </p>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto">
@@ -52,8 +52,8 @@ export default function ReasoningPanel({
             )}
 
             {!isLoading && reasoning && (
-              <div className="prose prose-sm max-w-none">
-                <ReasoningContent content={reasoning} />
+              <div className="space-y-4">
+                <StructuredReasoningDisplay reasoning={reasoning} />
               </div>
             )}
 
@@ -77,65 +77,75 @@ export default function ReasoningPanel({
 }
 
 /**
- * Component to render formatted reasoning content
- * Supports markdown-like formatting
+ * Component to display structured reasoning response
  */
-function ReasoningContent({ content }: { content: string }) {
-  // Split content by double newlines to create paragraphs
-  const sections = content.split('\n\n').filter(Boolean)
+function StructuredReasoningDisplay({ reasoning }: { reasoning: RouteReasoningResponse }) {
+  const { Altitude, Issues, Segment_Analysis, Mag_Heading, Go_NoGo, Go_NoGo_Reasoning } = reasoning
 
   return (
     <div className="space-y-4 text-sm">
-      {sections.map((section, index) => {
-        // Check if section is a heading (starts with ##)
-        if (section.startsWith('## ')) {
-          const headingText = section.replace('## ', '')
-          return (
-            <h3 key={index} className="font-semibold text-base mt-4 mb-2">
-              {headingText}
-            </h3>
-          )
-        }
+      {/* Go/No-Go Decision */}
+      <div className={`p-3 rounded-lg ${Go_NoGo ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold text-base">Go / No-Go Decision</h3>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${Go_NoGo ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+            {Go_NoGo ? 'GO' : 'NO-GO'}
+          </span>
+        </div>
+        <p className="text-sm leading-relaxed">{Go_NoGo_Reasoning}</p>
+      </div>
 
-        // Check if section is a subheading (starts with ###)
-        if (section.startsWith('### ')) {
-          const subheadingText = section.replace('### ', '')
-          return (
-            <h4 key={index} className="font-medium text-sm mt-3 mb-1">
-              {subheadingText}
-            </h4>
-          )
-        }
+      {/* Cruise Altitude */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <h3 className="font-semibold text-sm mb-1">Recommended Cruise Altitude</h3>
+        <p className="text-2xl font-bold text-blue-700">{Altitude.toLocaleString()}' MSL</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Based on hemispheric altitude rule (VFR)
+        </p>
+      </div>
 
-        // Check if section is a list (lines start with -)
-        if (section.includes('\n-')) {
-          const lines = section.split('\n').filter(Boolean)
-          const items = lines.filter((line) => line.trim().startsWith('-'))
+      {/* Magnetic Headings */}
+      <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+        <h3 className="font-semibold text-sm mb-2">Magnetic Headings</h3>
+        <div className="flex flex-wrap gap-2">
+          {Mag_Heading.map((heading, idx) => (
+            <div key={idx} className="flex items-center gap-1">
+              <span className="px-2 py-1 bg-slate-200 rounded text-xs font-mono font-semibold">
+                {heading.toString().padStart(3, '0')}°
+              </span>
+              {idx < Mag_Heading.length - 1 && (
+                <span className="text-muted-foreground text-xs">→</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
 
-          return (
-            <ul key={index} className="list-disc list-inside space-y-1 ml-2">
-              {items.map((item, i) => (
-                <li key={i} className="text-sm">
-                  {item.replace(/^-\s*/, '')}
-                </li>
-              ))}
-            </ul>
-          )
-        }
+      {/* Segment Analysis */}
+      <div className="space-y-2">
+        <h3 className="font-semibold text-base">Segment Analysis</h3>
+        {Segment_Analysis.map((segment, idx) => (
+          <div key={idx} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">
+                {idx + 1}
+              </span>
+              <p className="text-sm leading-relaxed flex-1">{segment}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-        // Regular paragraph with bold/italic support
-        const formattedSection = section
-          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-
-        return (
-          <p
-            key={index}
-            className="text-sm leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: formattedSection }}
-          />
-        )
-      })}
+      {/* Issues and Considerations */}
+      {Issues && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+            <span className="text-amber-600">⚠️</span>
+            Potential Issues & Considerations
+          </h3>
+          <p className="text-sm leading-relaxed">{Issues}</p>
+        </div>
+      )}
     </div>
   )
 }

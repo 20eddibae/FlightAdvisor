@@ -12,6 +12,7 @@ interface WaypointMarkersProps {
 
 export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps) {
   useEffect(() => {
+    // Basic validation
     if (!map || waypoints.length === 0) return
 
     // Additional safety check: ensure map is fully loaded
@@ -90,8 +91,13 @@ export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps
 
       el.appendChild(labelEl)
 
-      markers.push(marker)
-    })
+        el.appendChild(labelEl)
+
+        markers.push(marker)
+      })
+    } catch (err) {
+      console.warn('Error creating waypoint markers:', err)
+    }
 
     // Cleanup on unmount
     return () => {
