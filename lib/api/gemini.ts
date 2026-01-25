@@ -87,7 +87,7 @@ function calculateMagneticHeading(
   heading = (heading + 360) % 360
 
   // Apply magnetic variation for California (approximately 13° East)
-  heading = (heading + 13) % 360
+  heading = (heading - 14) % 360
 
   return Math.round(heading)
 }
