@@ -144,10 +144,8 @@ export class AirportSpatialIndex {
     }
 
     // Search through all airports
-    // Note: For very large datasets (100k+), consider adding a trie index
+    // Scan all airports to ensure we find the best matches
     for (const airport of this.airports.values()) {
-      if (results.length >= maxResults) break;
-
       // Skip if already added as exact match
       if (exactMatch && airport.id === exactMatch.id) continue;
 
@@ -159,15 +157,15 @@ export class AirportSpatialIndex {
       }
     }
 
-    // Sort results with improved ICAO prioritization
+    // Sort results with improved prioritization
     results.sort((a, b) => {
-      // Exact match comes first
+      // 1. Exact match comes first
       const aExact = a.id.toUpperCase() === upperQuery;
       const bExact = b.id.toUpperCase() === upperQuery;
       if (aExact && !bExact) return -1;
       if (!aExact && bExact) return 1;
 
-      // K-prefix match for 3-letter queries (BOS → KBOS)
+      // 2. K-prefix match for 3-letter queries (BOS → KBOS)
       if (upperQuery.length === 3) {
         const kPrefixCode = 'K' + upperQuery;
         const aIsKMatch = a.id.toUpperCase() === kPrefixCode;
@@ -176,13 +174,26 @@ export class AirportSpatialIndex {
         if (!aIsKMatch && bIsKMatch) return 1;
       }
 
-      // ID starts with query
-      const aIdMatch = a.id.toLowerCase().startsWith(lowerQuery);
-      const bIdMatch = b.id.toLowerCase().startsWith(lowerQuery);
-      if (aIdMatch && !bIdMatch) return -1;
-      if (!aIdMatch && bIdMatch) return 1;
+      // 3. ID starts with query
+      const aIdStart = a.id.toLowerCase().startsWith(lowerQuery);
+      const bIdStart = b.id.toLowerCase().startsWith(lowerQuery);
+      if (aIdStart && !bIdStart) return -1;
+      if (!aIdStart && bIdStart) return 1;
 
-      // Default: alphabetical by ID
+      // 4. Name starts with query
+      const aNameStart = a.name.toLowerCase().startsWith(lowerQuery);
+      const bNameStart = b.name.toLowerCase().startsWith(lowerQuery);
+      if (aNameStart && !bNameStart) return -1;
+      if (!aNameStart && bNameStart) return 1;
+
+      // 5. Prioritize Towered airports (Major airports)
+      // This ensures KSFO/KLAX appear before small helipads with similar names
+      const aTowered = a.type === 'towered';
+      const bTowered = b.type === 'towered';
+      if (aTowered && !bTowered) return -1;
+      if (!aTowered && bTowered) return 1;
+
+      // 6. Default: alphabetical by ID
       return a.id.localeCompare(b.id);
     });
 

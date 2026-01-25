@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { RouteReasoningResponse } from '@/lib/api/gemini'
+import { Sparkles, Send, ShieldCheck, CloudSun, AlertTriangle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 export interface AnalysisMessage {
   id: string
@@ -60,7 +62,7 @@ export default function WeatherChatBot({
             weather,
             route,
           },
-          history: [], // No history needed since it's visible above
+          history: [],
         }),
       })
 
@@ -99,62 +101,52 @@ export default function WeatherChatBot({
   }
 
   return (
-    <div className="border-t-2 border-blue-200 bg-blue-50 p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-        <h4 className="text-xs font-semibold text-gray-800">Ask Questions</h4>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <h4 className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Intelligent Analysis</h4>
       </div>
 
-      <p className="text-[10px] text-gray-600 mb-2">
-        Your questions and answers will appear as analysis boxes above
-      </p>
-
       {/* Quick action buttons */}
-      <div className="flex flex-wrap gap-1 mb-2">
-        <button
-          onClick={() => setInput('Is it safe to fly this route?')}
-          disabled={isLoading}
-          className="text-[10px] px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded border border-blue-300 disabled:opacity-50"
-        >
-          Safety check
-        </button>
-        <button
-          onClick={() => setInput('Explain the weather conditions')}
-          disabled={isLoading}
-          className="text-[10px] px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded border border-blue-300 disabled:opacity-50"
-        >
-          Weather details
-        </button>
-        <button
-          onClick={() => setInput('What are the main concerns?')}
-          disabled={isLoading}
-          className="text-[10px] px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded border border-blue-300 disabled:opacity-50"
-        >
-          Main concerns
-        </button>
+      <div className="flex flex-wrap gap-2">
+        {[
+          { icon: ShieldCheck, label: 'Safety Check', query: 'Is it safe to fly this route?' },
+          { icon: CloudSun, label: 'Weather Details', query: 'Explain the weather conditions' },
+          { icon: AlertTriangle, label: 'Main Concerns', query: 'What are the main concerns?' },
+        ].map((item) => (
+          <button
+            key={item.label}
+            onClick={() => setInput(item.query)}
+            disabled={isLoading}
+            className="flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 bg-white border border-slate-100 rounded-full text-slate-600 hover:border-primary/30 hover:bg-primary/5 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+          >
+            <item.icon className="w-3 h-3 text-slate-400" />
+            {item.label}
+          </button>
+        ))}
       </div>
 
       {/* Input area */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 p-1.5 bg-white border border-slate-100 rounded-2xl shadow-inner focus-within:border-primary/30 transition-colors">
         <Input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about weather, safety, or alternatives..."
+          placeholder="Ask AI about this route..."
           disabled={isLoading}
-          className="text-xs h-8 bg-white"
+          className="border-none bg-transparent focus-visible:ring-0 shadow-none text-xs h-9 placeholder:text-slate-300"
         />
         <Button
           onClick={handleSendMessage}
           disabled={!input.trim() || isLoading}
           size="sm"
-          className="h-8 px-3 text-xs"
+          className="h-9 w-9 rounded-xl p-0 flex-shrink-0"
         >
           {isLoading ? (
-            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+            <div className="animate-spin rounded-full h-3 w-3 border-2 border-black/30 border-t-black" />
           ) : (
-            'Ask'
+            <Send className="w-4 h-4" />
           )}
         </Button>
       </div>

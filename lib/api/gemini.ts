@@ -244,7 +244,7 @@ export async function generateRouteReasoning(
     reasoningCache.set(cacheKey, parsedResponse)
 
     return parsedResponse
-    } catch (error) {
+  } catch (error) {
     console.error('Gemini API error:', error)
     // Fall back to pre-written reasoning
     return generateFallbackReasoning(request, magHeadings, relevantHazards)
@@ -336,7 +336,7 @@ function generateFallbackReasoning(
 
   // Determine Go/No-Go based on hazards
   const hasSignificantHazards = relevantHazards && relevantHazards.some(h =>
-    h.severity && (h.severity.toLowerCase().includes('severe') || h.severity.toLowerCase().includes('extreme'))
+    h.severity && typeof h.severity === 'string' && (h.severity.toLowerCase().includes('severe') || h.severity.toLowerCase().includes('extreme'))
   )
 
   return {
@@ -418,7 +418,7 @@ ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
   // Include hazard summary if provided (using filtered hazards that affect route)
   if (relevantHazards && relevantHazards.length > 0) {
     prompt += `**Active Hazards Along Route (within 25nm corridor):**\n`
-    prompt += relevantHazards.slice(0,10).map(h => {
+    prompt += relevantHazards.slice(0, 10).map(h => {
       const validTime = h.validFrom && h.validTo
         ? `Valid: ${new Date(h.validFrom).toLocaleString()} to ${new Date(h.validTo).toLocaleString()}`
         : 'Time unknown'

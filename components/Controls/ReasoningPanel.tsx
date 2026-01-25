@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import type { RouteReasoningResponse } from '@/lib/api/gemini'
 import WeatherChatBot, { type AnalysisMessage } from './WeatherChatBot'
+import { Activity, MessageSquare, Cloud } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ReasoningPanelProps {
   reasoning: RouteReasoningResponse | null
@@ -27,15 +28,11 @@ interface ReasoningPanelProps {
 export default function ReasoningPanel({
   reasoning,
   isLoading,
-  isVisible,
-  onToggle,
   weather,
   route,
 }: ReasoningPanelProps) {
   const [chatMessages, setChatMessages] = useState<AnalysisMessage[]>([])
   const [isChatLoading, setIsChatLoading] = useState(false)
-
-  console.log('🎯 ReasoningPanel render - weather:', weather, 'reasoning:', reasoning ? 'present' : 'null', 'isVisible:', isVisible)
 
   const handleMessageSent = (message: AnalysisMessage) => {
     setChatMessages(prev => [...prev, message])
@@ -46,107 +43,114 @@ export default function ReasoningPanel({
   }
 
   return (
-    <Card className="absolute top-0 right-0 z-10 bg-white shadow-lg w-96 max-h-[calc(100vh-2rem)] flex flex-col rounded-none">
-      <CardHeader className="cursor-pointer flex-shrink-0" onClick={onToggle}>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Route Analysis</CardTitle>
+    <Card className={cn(
+      "fixed top-0 right-0 z-40 flex flex-col overflow-hidden border border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-none",
+      "bg-white w-90 h-screen"
+    )}>
+      <>
+        <CardHeader className="p-6 pb-4 border-b border-slate-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                <Activity className="w-5 h-5" />
+              </div>
+              <div>
+                <CardTitle className="text-lg font-bold">Route Analysis</CardTitle>
+                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">AI Flight Intelligence</p>
+              </div>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0"
-          >
-            <span className={`text-lg transition-transform rotate-90 duration-200 ${isVisible ? '' : 'rotate-270'}`}>
-              ›
-            </span>
-          </Button>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      {isVisible && (
-        <>
-          <CardContent className="flex-1 overflow-y-auto min-h-0">
-              {isLoading && (
-                <div className="flex flex-col items-center justify-center h-full">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                  <p className="text-sm text-muted-foreground">
-                    Analyzing route constraints...
-                  </p>
-                </div>
-              )}
+        <CardContent className="flex-1 overflow-y-auto p-0 px-6 scrollbar-none">
+          {isLoading && (
+            <div className="flex flex-col items-center justify-center h-64">
+              <div className="relative w-12 h-12 mb-4">
+                <div className="absolute inset-0 border-4 border-primary/20 rounded-full" />
+                <div className="absolute inset-0 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+              <p className="text-sm font-medium text-slate-600">Analyzing route constraints...</p>
+              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-tighter">Powered by Gemini AI</p>
+            </div>
+          )}
 
-              {!isLoading && reasoning && (
-                <div className="space-y-4 pb-4">
-                  <StructuredReasoningDisplay reasoning={reasoning} weather={weather} />
+          {!isLoading && reasoning && (
+            <div className="space-y-6 pb-6">
+              <StructuredReasoningDisplay reasoning={reasoning} weather={weather} />
 
-                  {/* Display chat messages as analysis boxes */}
+              {/* Display chat messages as analysis boxes */}
+              {chatMessages.length > 0 && (
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <MessageSquare className="w-4 h-4" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Analysis History</span>
+                  </div>
                   {chatMessages.map((msg) => (
-                    <div key={msg.id} className="space-y-2">
+                    <div key={msg.id} className="space-y-2 animate-in fade-in slide-in-from-top-2">
                       {/* Question box */}
-                      <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <span className="text-indigo-600 font-semibold text-xs mt-0.5">Q:</span>
-                          <p className="text-sm text-indigo-900 flex-1">{msg.question}</p>
+                      <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">Q</div>
+                          <p className="text-sm text-slate-700 font-medium">{msg.question}</p>
                         </div>
                       </div>
 
                       {/* Answer box */}
-                      <div className="p-3 bg-white border border-gray-200 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <span className="text-green-600 font-semibold text-xs mt-0.5">A:</span>
-                          <p className="text-sm text-gray-800 flex-1 leading-relaxed">{msg.answer}</p>
+                      <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary">A</div>
+                          <p className="text-sm text-slate-600 leading-relaxed">{msg.answer}</p>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-2 text-right">
-                          {msg.timestamp.toLocaleTimeString()}
+                        <p className="text-[10px] text-slate-300 mt-3 font-medium text-right">
+                          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
                   ))}
-
-                  {/* Thinking indicator */}
-                  {isChatLoading && (
-                    <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg animate-pulse">
-                      <div className="flex items-center gap-3">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        </div>
-                        <p className="text-xs text-blue-700 font-medium">Analyzing your question...</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {!isLoading && !reasoning && (
-                <div className="flex items-center justify-center h-full text-center">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Plan a route to see AI reasoning
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      The system will explain why each routing decision was made
-                    </p>
+              {/* Thinking indicator */}
+              {isChatLoading && (
+                <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]" />
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]" />
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
+                    </div>
+                    <p className="text-xs text-primary font-bold uppercase tracking-wider">AI is processing...</p>
                   </div>
                 </div>
               )}
-          </CardContent>
-
-          {/* Weather Chatbot - only show when reasoning is available */}
-          {!isLoading && reasoning && (
-            <div className="flex-shrink-0">
-              <WeatherChatBot
-                reasoning={reasoning}
-                weather={weather}
-                route={route}
-                onMessageSent={handleMessageSent}
-                onLoadingChange={handleLoadingChange}
-              />
             </div>
           )}
-        </>
+
+          {!isLoading && !reasoning && (
+            <div className="flex flex-col items-center justify-center h-64 text-center px-4">
+              <div className="p-4 bg-slate-50 rounded-3xl mb-4">
+                <Activity className="w-8 h-8 text-slate-300" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-700">Waiting for Route</h3>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                Plan a route to see real-time AI reasoning about airspace, weather, and safety constraints.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </>
+
+      {/* Weather Chatbot area - solid background */}
+      {!isLoading && reasoning && (
+        <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <WeatherChatBot
+            reasoning={reasoning}
+            weather={weather}
+            route={route}
+            onMessageSent={handleMessageSent}
+            onLoadingChange={handleLoadingChange}
+          />
+        </div>
       )}
     </Card>
   )
@@ -230,89 +234,51 @@ function StructuredReasoningDisplay({
       </div>
 
       {/* Cruise Altitude */}
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="font-semibold text-sm mb-1">Recommended Cruise Altitude</h3>
-        <p className="text-2xl font-bold text-blue-700">{Altitude?.toLocaleString() ?? 'N/A'}' MSL</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Based on hemispheric altitude rule (VFR)
+      <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-white">
+        <h3 className="font-bold text-xs uppercase tracking-widest text-slate-400 mb-2">Recommended Cruise</h3>
+        <p className="text-3xl font-black text-blue-400">{Altitude?.toLocaleString() ?? 'N/A'}' MSL</p>
+        <p className="text-[10px] text-slate-400 mt-2 font-medium">
+          Hemispheric VFR Rule
         </p>
       </div>
 
       {/* Weather Section */}
       {weather && weather.length > 0 ? (
-        <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg">
-          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-            <span className="text-sky-600">☁️</span>
-            Weather Observations ({weather.length} stations)
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+          <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
+            <Cloud className="w-3.5 h-3.5" />
+            Weather Observations
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {weather.map((station, idx) => {
-              // Check if station ID looks like a valid ICAO code
               const isValidICAO = /^K[A-Z]{3}$/.test(station.station) || /^[A-Z]{4}$/.test(station.station)
 
               return (
-              <div key={idx} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs bg-sky-200 px-2 py-1 rounded">
-                    {station.station}
-                  </span>
-                  {!isValidICAO && (
-                    <span className="text-xs text-amber-600">⚠️ Non-ICAO ID</span>
-                  )}
-                </div>
-
-                {/* METAR Display */}
-                {station.metar ? (
-                  <div className="bg-white p-2 rounded border border-sky-100">
-                    <p className="text-xs font-semibold text-sky-700 mb-1">METAR</p>
-                    <p className="text-xs font-mono text-gray-700 leading-relaxed">
-                      {station.metar.rawOb || station.metar.raw_text || 'No data available'}
-                    </p>
-                    {(station.metar.fltCat || station.metar.flightCategory) && (
-                      <div className="mt-1">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                          (station.metar.fltCat || station.metar.flightCategory) === 'VFR' ? 'bg-green-100 text-green-700' :
-                          (station.metar.fltCat || station.metar.flightCategory) === 'MVFR' ? 'bg-yellow-100 text-yellow-700' :
-                          (station.metar.fltCat || station.metar.flightCategory) === 'IFR' ? 'bg-red-100 text-red-700' :
-                          (station.metar.fltCat || station.metar.flightCategory) === 'LIFR' ? 'bg-purple-100 text-purple-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {station.metar.fltCat || station.metar.flightCategory}
-                        </span>
-                      </div>
+                <div key={idx} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-xs bg-slate-900 text-white px-2 py-1 rounded">
+                      {station.station}
+                    </span>
+                    {!isValidICAO && (
+                      <span className="text-[10px] font-bold text-amber-600">⚠ NON-ICAO</span>
                     )}
                   </div>
-                ) : (
-                  <div className="bg-gray-50 p-2 rounded border border-gray-200">
-                    <p className="text-xs text-gray-500">No METAR available</p>
-                  </div>
-                )}
 
-                {/* TAF Display */}
-                {station.taf ? (
-                  <div className="bg-white p-2 rounded border border-sky-100">
-                    <p className="text-xs font-semibold text-sky-700 mb-1">TAF (Forecast)</p>
-                    <p className="text-xs font-mono text-gray-700 leading-relaxed">
-                      {station.taf.rawTAF || station.taf.raw_text || 'No data available'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 p-2 rounded border border-gray-200">
-                    <p className="text-xs text-gray-500">No TAF available</p>
-                  </div>
-                )}
-              </div>
-            )
+                  {/* METAR Display */}
+                  {station.metar && (
+                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mb-2">METAR</p>
+                      <p className="text-xs font-mono font-bold text-slate-700 leading-relaxed">
+                        {station.metar.rawOb || station.metar.raw_text}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
             })}
           </div>
         </div>
-      ) : (
-        <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-          <p className="text-xs text-gray-500">
-            Weather data: {weather ? `Array with ${weather.length} items` : 'undefined/null'}
-          </p>
-        </div>
-      )}
+      ) : null}
 
       {/* Segment Analysis - Interactive GUI */}
       <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
@@ -326,11 +292,10 @@ function StructuredReasoningDisplay({
               <button
                 key={idx}
                 onClick={() => setSelectedSegment(selectedSegment === idx ? null : idx)}
-                className={`flex-shrink-0 py-2 px-2 rounded-lg font-semibold text-sm transition-all ${
-                  selectedSegment === idx
-                    ? 'bg-blue-600 text-white shadow-lg scale-105'
-                    : 'bg-white border-2 border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
-                }`}
+                className={`flex-shrink-0 py-2 px-2 rounded-lg font-semibold text-sm transition-all ${selectedSegment === idx
+                  ? 'bg-blue-600 text-white shadow-lg scale-105'
+                  : 'bg-white border-2 border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+                  }`}
               >
                 <div className="flex flex-col items-center min-w-[60px]">
                   <div className="text-[10px] font-bold leading-tight text-center">

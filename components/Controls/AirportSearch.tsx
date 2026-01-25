@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import type { CachedAirport } from '@/lib/cache/types';
 import { CACHE_CONFIG } from '@/lib/constants';
+import { MapPin } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface AirportSearchProps {
   onSelect: (airport: CachedAirport) => void;
@@ -42,15 +44,9 @@ export function AirportSearch({
   useEffect(() => {
     // Only run once when cache becomes initialized
     if (!hasAutoSelectedRef.current && initialValue && isInitialized && getAirportById) {
-      console.log(`Attempting to auto-select airport: ${initialValue}`);
-      
-      // Try to find airport immediately
       let airport = getAirportById(initialValue);
 
       if (airport) {
-        console.log(`✓ Auto-selected airport: ${airport.id} - ${airport.name}`);
-
-        // Check if ID is a valid ICAO code or MongoDB ID
         const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
         const displayText = isICAO ? `${airport.id} - ${airport.name}` : airport.name;
 
@@ -58,31 +54,26 @@ export function AirportSearch({
         onSelect(airport);
         hasAutoSelectedRef.current = true;
       } else {
-        console.log(`Airport ${initialValue} not found immediately, retrying...`);
-        // If not found, wait a bit for cache to load regions, then try again
         const timeoutId = setTimeout(() => {
           airport = getAirportById(initialValue);
           if (airport) {
-            console.log(`✓ Auto-selected airport (delayed): ${airport.id} - ${airport.name}`);
-
             const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
             const displayText = isICAO ? `${airport.id} - ${airport.name}` : airport.name;
 
             setQuery(displayText);
             onSelect(airport);
           } else {
-            console.warn(`⚠ Airport ${initialValue} not found in cache after retry`);
             setQuery(initialValue);
           }
           hasAutoSelectedRef.current = true;
-        }, 1500); // Wait 1.5s for regions to load
+        }, 1500);
 
         return () => clearTimeout(timeoutId);
       }
     } else if (initialValue && !isInitialized) {
-      console.log(`Waiting for cache to initialize before auto-selecting ${initialValue}`);
+      // Waiting for initialization
     }
-  }, [isInitialized, getAirportById, initialValue, onSelect]); // Include all dependencies
+  }, [isInitialized, getAirportById, initialValue, onSelect]);
 
   // Debounced search
   useEffect(() => {
@@ -93,7 +84,7 @@ export function AirportSearch({
     }
 
     const timeoutId = setTimeout(() => {
-      const searchResults = searchAirports(query, { maxResults: 10 });
+      const searchResults = searchAirports(query, { maxResults: 50 });
       setResults(searchResults);
       setShowDropdown(searchResults.length > 0);
       setSelectedIndex(0);
@@ -142,13 +133,8 @@ export function AirportSearch({
 
   const handleSelect = useCallback(
     (airport: CachedAirport) => {
-      // Check if ID is a MongoDB ObjectId (24 hex characters) vs ICAO code (3-4 letters)
-      const isMongoId = airport.id.length === 24 && /^[a-f0-9]{24}$/i.test(airport.id);
       const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
 
-      // Display format:
-      // - If valid ICAO code: "KSQL - San Carlos Airport"
-      // - If MongoDB ID: Just "San Carlos Airport" (hide the ugly ID)
       if (isICAO) {
         setQuery(`${airport.id} - ${airport.name}`);
       } else {
@@ -165,14 +151,66 @@ export function AirportSearch({
     const value = e.target.value;
     setQuery(value);
 
-    // Show dropdown when user starts typing
     if (value.trim() && !showDropdown) {
       setShowDropdown(true);
     }
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={cn("relative z-[60]", className)}>
+      {showDropdown && results.length > 0 && (
+        <Card
+          ref={dropdownRef}
+          className="absolute bottom-full left-0 sm:left-auto sm:right-0 sm:min-w-[400px] w-full mb-3 max-h-80 overflow-y-auto border border-slate-200 shadow-2xl bg-white rounded-2xl p-2 animate-in fade-in slide-in-from-bottom-2 duration-300 z-[100]"
+        >
+          {results.map((airport, index) => {
+            const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
+
+            return (
+              <div
+                key={airport.id}
+                onClick={() => handleSelect(airport)}
+                onMouseEnter={() => setSelectedIndex(index)}
+                className={cn(
+                  "px-4 py-3 cursor-pointer transition-colors duration-200 rounded-xl mb-1 last:mb-0",
+                  index === selectedIndex
+                    ? 'bg-black/10'
+                    : 'hover:bg-black/5 text-slate-700'
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    index === selectedIndex ? "bg-black/5" : "bg-slate-100"
+                  )}>
+                    <MapPin className="w-4 h-4 text-slate-500" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold flex items-start gap-2">
+                      {isICAO && (
+                        <span className={cn(
+                          "font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0 mt-0.5",
+                          index === selectedIndex ? "bg-slate-200" : "bg-slate-100 text-slate-600"
+                        )}>
+                          {airport.id}
+                        </span>
+                      )}
+                      <span className="text-sm text-slate-900 break-words leading-tight">{airport.name}</span>
+                    </div>
+                    <div className={cn(
+                      "text-[10px] mt-0.5 font-bold",
+                      index === selectedIndex ? "text-slate-600" : "text-slate-400"
+                    )}>
+                      {airport.type === 'towered' ? 'Towered' : 'Non-towered'} • Elev: {airport.elevation}ft
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
       <Input
         ref={inputRef}
         value={query}
@@ -181,52 +219,18 @@ export function AirportSearch({
         placeholder={placeholder}
         disabled={disabled || !isInitialized}
         autoFocus={autoFocus}
-        className="uppercase font-mono"
+        className={cn(
+          "uppercase font-bold transition-all duration-300",
+          "bg-white border-slate-200 hover:bg-black/5 focus:bg-white",
+          "shadow-sm focus:shadow-md h-12 rounded-2xl",
+          "placeholder:text-slate-400 text-slate-700"
+        )}
       />
 
-      {showDropdown && results.length > 0 && (
-        <Card
-          ref={dropdownRef}
-          className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto border shadow-xl bg-white"
-        >
-          {results.map((airport, index) => {
-            // Check if ID is a valid ICAO code
-            const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id);
-
-            return (
-              <div
-                key={airport.id}
-                onClick={() => handleSelect(airport)}
-                onMouseEnter={() => setSelectedIndex(index)}
-                className={`px-4 py-3 cursor-pointer transition-colors border-b last:border-b-0 ${
-                  index === selectedIndex
-                    ? 'bg-blue-50'
-                    : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="font-semibold text-gray-900">
-                  {isICAO ? (
-                    <>
-                      <span className="font-mono text-blue-600">{airport.id}</span>
-                      {' - '}
-                      {airport.name}
-                    </>
-                  ) : (
-                    airport.name
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {airport.type === 'towered' ? 'Towered' : 'Non-towered'} • Elevation: {airport.elevation}ft
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      )}
-
-      {!isInitialized && (
-        <div className="text-xs text-muted-foreground mt-1">
-          Loading airport database...
+      {!isInitialized && query.trim() && (
+        <div className="absolute top-full left-0 mt-2 px-3 py-1.5 bg-white shadow-lg rounded-full border text-[10px] font-bold text-slate-500 flex items-center gap-2 z-10">
+          <div className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
+          DATABASE LOADING...
         </div>
       )}
     </div>
