@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { AirspaceFeatureCollection } from '@/lib/geojson'
 import { COLORS } from '@/lib/constants'
@@ -11,15 +11,22 @@ interface AirspaceLayerProps {
 }
 
 export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
-  const [popup] = useState(
-    new mapboxgl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-    })
-  )
+  // Use a ref for the popup to ensure we don't create multiple instances or lose track
+  const popupRef = useRef<mapboxgl.Popup | null>(null)
 
   useEffect(() => {
-    if (!map || !airspace || airspace.features.length === 0) return
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    // Check if map is valid and has style (not destroyed)
+    const isMapLoaded = map && map.getStyle();
+    if (!isMapLoaded || !airspace || airspace.features.length === 0) return
 
     const sourceId = 'airspace'
     const fillLayerId = 'airspace-fill'
@@ -78,23 +85,38 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
 
     // Add hover effect
     const handleMouseMove = (e: mapboxgl.MapLayerMouseEvent) => {
+      // Safety check: ensure map and style are still valid
+      if (!map || !map.getStyle()) return;
+
       if (e.features && e.features.length > 0) {
         const feature = e.features[0]
         const props = feature.properties
 
+        // Robust check for properties
         if (props) {
           map.getCanvas().style.cursor = 'pointer'
 
-          popup
-            .setLngLat(e.lngLat)
+          const floor = props.floor_msl !== undefined && props.floor_msl !== null
+            ? Number(props.floor_msl).toLocaleString()
+            : 'N/A';
+
+          const ceiling = props.ceiling_msl !== undefined && props.ceiling_msl !== null
+            ? Number(props.ceiling_msl).toLocaleString()
+            : 'N/A';
+
+          const type = props.type ? props.type.replace('_', ' ') : 'Unknown';
+          const name = props.name || 'Unknown Airspace';
+
+          popupRef.current
+            ?.setLngLat(e.lngLat)
             .setHTML(
               `
               <div style="padding: 4px;">
-                <strong>${props.name}</strong><br/>
+                <strong>${name}</strong><br/>
                 <span style="font-size: 11px; color: #666;">
-                  Type: ${props.type.replace('_', ' ')}<br/>
-                  Floor: ${props.floor_msl.toLocaleString()}' MSL<br/>
-                  Ceiling: ${props.ceiling_msl.toLocaleString()}' MSL<br/>
+                  Type: ${type}<br/>
+                  Floor: ${floor}' MSL<br/>
+                  Ceiling: ${ceiling}' MSL<br/>
                   ${props.notes ? `<br/>${props.notes}` : ''}
                 </span>
               </div>
@@ -106,8 +128,10 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
     }
 
     const handleMouseLeave = () => {
-      map.getCanvas().style.cursor = ''
-      popup.remove()
+      if (map && map.getStyle()) {
+        map.getCanvas().style.cursor = ''
+      }
+      popupRef.current?.remove()
     }
 
     map.on('mousemove', fillLayerId, handleMouseMove)
@@ -115,22 +139,33 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
 
     // Cleanup on unmount
     return () => {
-      map.off('mousemove', fillLayerId, handleMouseMove)
-      map.off('mouseleave', fillLayerId, handleMouseLeave)
+      // Check if map is still valid before trying to remove layers/listeners
+      // Using try-catch because accessing map properties on a destroyed map can throw
+      try {
+        // Always remove event listeners first
+        map.off('mousemove', fillLayerId, handleMouseMove)
+        map.off('mouseleave', fillLayerId, handleMouseLeave)
 
-      if (map.getLayer(outlineLayerId)) {
-        map.removeLayer(outlineLayerId)
-      }
-      if (map.getLayer(fillLayerId)) {
-        map.removeLayer(fillLayerId)
-      }
-      if (map.getSource(sourceId)) {
-        map.removeSource(sourceId)
+        // Only remove layers/sources if the map style is still loaded
+        // This prevents "undefined is not an object (evaluating 'this.style.getOwnLayer')"
+        if (map.getStyle()) {
+          if (map.getLayer(outlineLayerId)) {
+            map.removeLayer(outlineLayerId)
+          }
+          if (map.getLayer(fillLayerId)) {
+            map.removeLayer(fillLayerId)
+          }
+          if (map.getSource(sourceId)) {
+            map.removeSource(sourceId)
+          }
+        }
+      } catch (err) {
+        console.warn('Error during airspace cleanup:', err)
       }
 
-      popup.remove()
+      popupRef.current?.remove()
     }
-  }, [map, airspace, popup])
+  }, [map, airspace]) // Removed popup from dependency array as it's a ref
 
   return null
 }

@@ -1,17 +1,21 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import MapView from './MapView'
-import AirportMarkers from './AirportMarkers'
-import WaypointMarkers from './WaypointMarkers'
-import AirspaceLayer from './AirspaceLayer'
-import RouteLayer from './RouteLayer'
 import RouteControls from '../Controls/RouteControls'
 import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
 import { loadAirports, loadWaypoints, loadAllAirspace, Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
+
+// Dynamically import map layers to avoid SSR issues with Mapbox GL
+const AirportMarkers = dynamic(() => import('./AirportMarkers'), { ssr: false })
+const WaypointMarkers = dynamic(() => import('./WaypointMarkers'), { ssr: false })
+const AirspaceLayer = dynamic(() => import('./AirspaceLayer'), { ssr: false })
+const RouteLayer = dynamic(() => import('./RouteLayer'), { ssr: false })
+
 
 export default function MapContainer() {
   const [map, setMap] = useState<MapRef | null>(null)
