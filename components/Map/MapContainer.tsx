@@ -6,7 +6,7 @@ import MapView from './MapView'
 import RouteControls from '../Controls/RouteControls'
 import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
-import { loadAirports, loadWaypoints, loadAllAirspace, Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
+import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
 
@@ -34,22 +34,67 @@ export default function MapContainer() {
   const handleMapLoad = useCallback(async (loadedMap: MapRef) => {
     setMap(loadedMap)
 
-    // Load aviation data
+    // NorCal bounds for OpenAIP queries (KSQL to KSMF region)
+    const bounds = '-123,37,-121,39'
+
+    // Load aviation data from API routes
     try {
-      const [airportsData, waypointsData, airspaceData] = await Promise.all([
-        loadAirports(),
-        loadWaypoints(),
-        loadAllAirspace(),
+      console.log('Loading aviation data from OpenAIP API...')
+
+      const [airportsRes, navaidsRes, airspaceRes] = await Promise.all([
+        fetch(`/api/openaip?type=airports&bounds=${bounds}`),
+        fetch(`/api/openaip?type=navaids&bounds=${bounds}`),
+        fetch(`/api/openaip?type=airspace&bounds=${bounds}`),
       ])
 
-      setAirports(airportsData)
-      setWaypoints(waypointsData)
-      setAirspace(airspaceData)
+      if (!airportsRes.ok || !navaidsRes.ok || !airspaceRes.ok) {
+        throw new Error('Failed to fetch aviation data from OpenAIP API')
+      }
+
+      const [airportsData, navaidsData, airspaceData] = await Promise.all([
+        airportsRes.json(),
+        navaidsRes.json(),
+        airspaceRes.json(),
+      ])
+
+      // Convert API response to internal format
+      const airports: Airport[] = airportsData.data.map((ap: any) => ({
+        id: ap.icaoCode || ap._id,
+        name: ap.name,
+        lat: ap.geometry.coordinates[1],
+        lon: ap.geometry.coordinates[0],
+        elevation: ap.elevation?.value || 0,
+        type: ap.trafficType?.includes(0) ? 'towered' : 'non-towered', // 0 = IFR
+        notes: `Type: ${ap.type}`,
+      }))
+
+      const waypoints: Waypoint[] = navaidsData.data.map((navaid: any) => ({
+        id: navaid._id,
+        name: navaid.name,
+        lat: navaid.geometry.coordinates[1],
+        lon: navaid.geometry.coordinates[0],
+        type: navaid.type === 4 ? 'VOR' : navaid.type === 3 ? 'NDB' : 'GPS_FIX', // Simplified type mapping
+        frequency: navaid.frequency
+          ? `${navaid.frequency.value} ${navaid.frequency.unit}`
+          : undefined,
+        description: `Type ${navaid.type} navigation aid`,
+      }))
+
+      const airspace: AirspaceFeatureCollection = airspaceData.data
+
+      setAirports(airports)
+      setWaypoints(waypoints)
+      setAirspace(airspace)
+
+      console.log(
+        `✓ Loaded ${airports.length} airports, ${waypoints.length} waypoints, ${airspace.features.length} airspace features`
+      )
     } catch (error) {
       console.error('Failed to load aviation data:', error)
       setError({
         title: 'Data Loading Error',
-        message: 'Failed to load aviation data. Please check that all data files are present and try refreshing the page.',
+        message:
+          'Failed to load aviation data from OpenAIP. Ensure OPEN_AIP_API_KEY is set in .env.local and restart the dev server.',
       })
     }
   }, [])
@@ -77,7 +122,7 @@ export default function MapContainer() {
       if (!departure || !arrival) {
         setError({
           title: 'Airport Not Found',
-          message: 'Could not find KSQL or KSMF airports in the data. Please check the airport data files.',
+          message: 'Could not find KSQL or KSMF in OpenAIP data. Ensure OPEN_AIP_API_KEY is set and the NorCal region is loaded.',
         })
         setIsCalculating(false)
         return

@@ -2,7 +2,7 @@
 
 ## ✅ Implementation Complete
 
-The OpenAIP API integration has been successfully implemented to replace FAA data references throughout the FlightAdvisor application. All data from static files can now be replaced with live OpenAIP data.
+The OpenAIP API integration is the sole source of aviation data (airports, waypoints, airspace) in FlightAdvisor. All data comes from OpenAIP; there is no static-data fallback.
 
 ## 📦 What Was Implemented
 
@@ -33,24 +33,21 @@ The OpenAIP API integration has been successfully implemented to replace FAA dat
 
 ### 2. Data Loader Integration (`/lib/geojson.ts`)
 
-**Enhanced Functions:**
-- ✅ `loadAllAirspace(options?)` - Load from OpenAIP or static files
-- ✅ `loadAirports(options?)` - Load from OpenAIP or static files
-- ✅ `loadWaypoints(options?)` - Load from OpenAIP or static files
+**Functions (OpenAIP only; no static fallback):**
+- ✅ `loadAllAirspace(options?)` - Load from OpenAIP
+- ✅ `loadAirports(options?)` - Load from OpenAIP
+- ✅ `loadWaypoints(options?)` - Load from OpenAIP
 
-**Options Interface:**
+**Options:**
 ```typescript
-{
-  useOpenAIP?: boolean
-  bounds?: [number, number, number, number]
-}
+{ bounds?: [number, number, number, number] }  // Default: NorCal DEFAULT_BOUNDS
 ```
 
 **Features:**
-- ✅ Seamless data format conversion (OpenAIP → Internal format)
-- ✅ Automatic fallback to static files if OpenAIP fails
-- ✅ Consistent data structure regardless of source
-- ✅ Proper error handling and logging
+- ✅ All aviation data comes from OpenAIP
+- ✅ Seamless format conversion (OpenAIP → internal)
+- ✅ Throws if `OPEN_AIP_API_KEY` not set
+- ✅ Proper error handling
 
 ### 3. API Routes (`/app/api/openaip/route.ts`)
 
@@ -89,31 +86,21 @@ The OpenAIP API integration has been successfully implemented to replace FAA dat
 ### 4. Component Integration (`/components/Map/MapContainer.tsx`)
 
 **Features:**
-- ✅ Environment variable control: `NEXT_PUBLIC_USE_OPENAIP`
-- ✅ Automatic bounds calculation for KSQL→KSMF route
-- ✅ Parallel data loading for performance
-- ✅ Console logging for debugging
-- ✅ Graceful error handling
-
-**Usage:**
-```bash
-# .env.local
-NEXT_PUBLIC_USE_OPENAIP=true  # Use OpenAIP
-NEXT_PUBLIC_USE_OPENAIP=false # Use static files (default)
-```
+- ✅ Always loads data from OpenAIP (no toggle)
+- ✅ Uses `DEFAULT_BOUNDS` (NorCal KSQL→KSMF region)
+- ✅ Parallel data loading
+- ✅ Error messages mention OpenAIP / `OPEN_AIP_API_KEY` when relevant
 
 ### 5. Configuration (`.env.local`)
 
-**Variables:**
+**Required:**
 ```bash
-OPEN_AIP_API_KEY=f4b375fe81de1e578c19a57febb0004d
-NEXT_PUBLIC_USE_OPENAIP=false
+OPEN_AIP_API_KEY=your_openaip_api_key
 ```
 
 **Status:**
-- ✅ API key configured and working
-- ✅ Default to static files for stability
-- ✅ Easy toggle for testing/production
+- ✅ All data comes from OpenAIP; app fails without API key
+- ✅ No `NEXT_PUBLIC_USE_OPENAIP` or static-data toggle
 
 ### 6. Test Suite
 
@@ -126,34 +113,16 @@ NEXT_PUBLIC_USE_OPENAIP=false
    - Configuration checks
 
 2. **Integration Tests** (`/lib/__tests__/geojson.integration.test.ts`)
-   - Data loader integration
-   - Fallback behavior
+   - OpenAIP data loader integration
    - Data format consistency
    - Performance benchmarks
 
-3. **Manual Test Script** (`/scripts/test-openaip.ts`)
-   - Comprehensive test suite
-   - Real API calls
-   - Performance testing
-   - Configuration validation
-
-4. **Data Comparison Script** (`/scripts/compare-data-sources.ts`)
-   - Compare static vs OpenAIP data
-   - Coverage analysis
-   - Coordinate verification
-   - Feature mapping
-
 **Run Tests:**
 ```bash
-# Automated tests
 npm test
-
-# Manual comprehensive test
-npx tsx scripts/test-openaip.ts
-
-# Data comparison
-npx tsx scripts/compare-data-sources.ts
 ```
+
+**Note:** `scripts/` and `TESTING.md` are in `.gitignore` (testing scripts).
 
 ### 7. Documentation
 
@@ -189,12 +158,10 @@ GET /api/openaip?type=navaids&bounds=-123,37,-121,39
 **KSQL (San Carlos Airport):**
 - ✅ Found in OpenAIP data
 - ✅ Coordinates: [-122.2495, 37.5119]
-- ✅ Matches static data
 
 **KSMF (Sacramento Executive Airport):**
 - ✅ Found in OpenAIP data
 - ✅ Coordinates: [-121.4932, 38.5125]
-- ✅ Matches static data
 
 **SFO Class B Airspace:**
 - ✅ Found in OpenAIP data
@@ -218,55 +185,21 @@ GET /api/openaip?type=navaids&bounds=-123,37,-121,39
 - **OpenAIP:** 9+ navaids (VOR, NDB, etc.)
 - **Coverage:** OpenAIP provides real navigation aids with frequencies
 
-## 🔄 Data Replacement Strategy
+## 🔄 Data Strategy
 
-### Static Files vs OpenAIP
-
-**Static files are kept as fallback for:**
-1. ✅ Offline development
-2. ✅ API failures/downtime
-3. ✅ Rate limit exceeded
-4. ✅ Network errors
-5. ✅ Testing without API key
-
-**OpenAIP is used when:**
-1. ✅ `NEXT_PUBLIC_USE_OPENAIP=true`
-2. ✅ `OPEN_AIP_API_KEY` configured
-3. ✅ Network available
-4. ✅ API responsive
-
-**Automatic fallback occurs when:**
-- ❌ API key invalid
-- ❌ Network error
-- ❌ API returns error
-- ❌ Response timeout
+All aviation data (airports, waypoints, airspace) comes from **OpenAIP only**. There is no static-data fallback. The app requires `OPEN_AIP_API_KEY` and will show a clear error if it is missing or if the API fails.
 
 ## 🚀 How to Use
 
-### Development (Static Files)
+### Development & Production
 ```bash
-# .env.local
-NEXT_PUBLIC_USE_OPENAIP=false
+# .env.local (required)
+OPEN_AIP_API_KEY=your_openaip_api_key
 
 npm run dev
 ```
 
-### Testing (OpenAIP)
-```bash
-# .env.local
-NEXT_PUBLIC_USE_OPENAIP=true
-
-npm run dev
-```
-
-### Production
-```bash
-# .env.local (for Vercel deployment)
-OPEN_AIP_API_KEY=your_production_key
-NEXT_PUBLIC_USE_OPENAIP=true
-
-vercel --prod
-```
+For Vercel: set `OPEN_AIP_API_KEY` in the project environment variables.
 
 ## 📋 Migration Checklist
 
@@ -277,7 +210,7 @@ vercel --prod
 - ✅ Environment variables configured
 - ✅ Tests written and passing
 - ✅ Documentation complete
-- ✅ Fallback mechanism working
+- ✅ OpenAIP-only data loading (no fallback)
 - ✅ Error handling robust
 - ✅ Performance acceptable (<5s load time)
 
@@ -294,12 +227,10 @@ vercel --prod
 - ✅ More comprehensive data coverage
 - ✅ Real-time aviation data
 - ✅ Worldwide coverage (not just US)
-- ✅ Automatic fallback for reliability
 - ✅ No noticeable UI changes
 
 ### For Operations
 - ✅ Rate limit aware
-- ✅ Graceful degradation
 - ✅ Performance monitoring
 - ✅ Error tracking
 - ✅ Health check endpoint
@@ -314,12 +245,10 @@ vercel --prod
 ### Rate Limits
 - OpenAIP enforces rate limits (returns 429)
 - Implement client-side caching if needed
-- Use static files as fallback during high traffic
 
 ### Monitoring
 - Check browser console for OpenAIP logs
 - Monitor API response times
-- Track fallback occurrences
 
 ### Updates
 - OpenAIP API is stable (v1.1)

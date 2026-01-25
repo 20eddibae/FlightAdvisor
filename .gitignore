@@ -5,6 +5,8 @@
 
 # Testing
 /coverage
+/scripts
+TESTING.md
 
 # Next.js
 /.next/
