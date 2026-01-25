@@ -14,64 +14,75 @@ export default function AirportMarkers({ map, airports }: AirportMarkersProps) {
   useEffect(() => {
     if (!map || airports.length === 0) return
 
+    // Safety check: ensure map container is available
+    if (!map.getCanvasContainer()) return
+
     const markers: mapboxgl.Marker[] = []
 
-    airports.forEach((airport) => {
-      // Create custom marker element
-      const el = document.createElement('div')
-      el.className = 'airport-marker'
-      el.style.width = '24px'
-      el.style.height = '24px'
-      el.style.borderRadius = '50%'
-      el.style.cursor = 'pointer'
+    try {
+      airports.forEach((airport) => {
+        // Create custom marker element
+        const el = document.createElement('div')
+        el.className = 'airport-marker'
 
-      // Green for departure (KSQL), red for arrival (KSMF)
-      const isDeparture = airport.id === 'KSQL'
-      el.style.backgroundColor = isDeparture ? COLORS.DEPARTURE_MARKER : COLORS.ARRIVAL_MARKER
-      el.style.border = '2px solid white'
-      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+        // Green for departure (KSQL), red for arrival (KSMF)
+        const isDeparture = airport.id === 'KSQL'
 
-      // Create popup with airport information
-      const popup = new mapboxgl.Popup({
-        offset: 25,
-        closeButton: false,
-      }).setHTML(`
-        <div style="padding: 4px;">
-          <strong>${airport.id}</strong><br/>
-          ${airport.name}<br/>
-          <span style="font-size: 11px; color: #666;">
-            Elevation: ${airport.elevation}' MSL<br/>
-            ${airport.type === 'towered' ? 'Towered' : 'Non-towered'}<br/>
-            ${airport.notes || ''}
-          </span>
-        </div>
-      `)
+        Object.assign(el.style, {
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          backgroundColor: isDeparture ? COLORS.DEPARTURE_MARKER : COLORS.ARRIVAL_MARKER,
+          border: '2px solid white',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        })
 
-      // Create marker
-      // Safety check: ensure map is still valid for marker addition
-      if (!map.getCanvasContainer()) return;
+        // Create popup with airport information
+        const popup = new mapboxgl.Popup({
+          offset: 25,
+          closeButton: false,
+        }).setHTML(`
+            <div style="padding: 4px;">
+            <strong>${airport.id}</strong><br/>
+            ${airport.name}<br/>
+            <span style="font-size: 11px; color: #666;">
+                Elevation: ${airport.elevation}' MSL<br/>
+                ${airport.type === 'towered' ? 'Towered' : 'Non-towered'}<br/>
+                ${airport.notes || ''}
+            </span>
+            </div>
+        `)
 
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat([airport.lon, airport.lat])
-        .setPopup(popup)
-        .addTo(map)
+        // Create marker
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([airport.lon, airport.lat])
+          .setPopup(popup)
+          .addTo(map)
 
-      // Add label below marker
-      const labelEl = document.createElement('div')
-      labelEl.className = 'airport-label'
-      labelEl.textContent = airport.id
-      labelEl.style.position = 'absolute'
-      labelEl.style.fontWeight = 'bold'
-      labelEl.style.fontSize = '12px'
-      labelEl.style.color = isDeparture ? COLORS.DEPARTURE_MARKER : COLORS.ARRIVAL_MARKER
-      labelEl.style.textShadow = '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white'
-      labelEl.style.marginTop = '28px'
-      labelEl.style.marginLeft = '-12px'
-      labelEl.style.pointerEvents = 'none'
-      el.appendChild(labelEl)
+        // Add label below marker
+        const labelEl = document.createElement('div')
+        labelEl.className = 'airport-label'
+        labelEl.textContent = airport.id
 
-      markers.push(marker)
-    })
+        Object.assign(labelEl.style, {
+          position: 'absolute',
+          fontWeight: 'bold',
+          fontSize: '12px',
+          color: isDeparture ? COLORS.DEPARTURE_MARKER : COLORS.ARRIVAL_MARKER,
+          textShadow: '1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white',
+          marginTop: '28px',
+          marginLeft: '-12px',
+          pointerEvents: 'none',
+        })
+
+        el.appendChild(labelEl)
+
+        markers.push(marker)
+      })
+    } catch (err) {
+      console.warn('Error creating airport markers:', err)
+    }
 
     // Cleanup on unmount
     return () => {
