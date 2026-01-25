@@ -4,51 +4,78 @@ import { useEffect } from 'react'
 import mapboxgl from 'mapbox-gl'
 import { Position } from 'geojson'
 import { COLORS } from '@/lib/constants'
+import { RouteResult } from '@/lib/routing/route'
 
 interface RouteLayerProps {
   map: mapboxgl.Map
-  coordinates: Position[]
+  route: RouteResult | null
+  coordinates?: Position[] // Fallback for simple display if needed
 }
 
-export default function RouteLayer({ map, coordinates }: RouteLayerProps) {
+export default function RouteLayer({ map, route }: RouteLayerProps) {
   useEffect(() => {
-    // Check if map is valid and has style (not destroyed)
     const isMapLoaded = map && map.getStyle();
-    if (!isMapLoaded || !coordinates || coordinates.length < 2) return
+    if (!isMapLoaded || !route || (!route.segments && (!route.coordinates || route.coordinates.length < 2))) return
 
-    // Additional safety check: ensure map is fully loaded
-    if (!map.getCanvasContainer() || !map.getStyle()) return
+    const sourceId = 'route-source'
+    const lineLayerId = 'route-line-layer'
+    const labelLayerId = 'route-label-layer'
 
-    const sourceId = 'route'
-    const layerId = 'route-line'
+    // Construct FeatureCollection from segments if available
+    // If not (e.g. legacy route or no segments provided), fall back to single LineString
+    let routeGeoJSON: GeoJSON.FeatureCollection<GeoJSON.LineString>
 
-    // Create GeoJSON for the route
-    const routeGeoJSON: GeoJSON.Feature<GeoJSON.LineString> = {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates,
-      },
+    if (route.segments) {
+      const features: GeoJSON.Feature<GeoJSON.LineString>[] = route.segments.map((seg, index) => ({
+        type: 'Feature',
+        properties: {
+          id: index,
+          distance: seg.distance,
+          exceedsLimit: seg.exceedsLimit
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [seg.start, seg.end]
+        }
+      }))
+      routeGeoJSON = {
+        type: 'FeatureCollection',
+        features
+      }
+    } else {
+      // Fallback for simple coordinate list
+      routeGeoJSON = {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {
+            distance: route.distance_nm,
+            exceedsLimit: false
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: route.coordinates || []
+          }
+        }]
+      }
     }
 
     try {
-      // Add source if it doesn't exist
+      // Add/Update Source
       if (!map.getSource(sourceId)) {
         map.addSource(sourceId, {
           type: 'geojson',
           data: routeGeoJSON,
         })
       } else {
-        // Update existing source
         const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource
         source.setData(routeGeoJSON)
       }
 
-      // Add layer if it doesn't exist
-      if (!map.getLayer(layerId)) {
+      // Add Line Layer
+      if (!map.getLayer(lineLayerId)) {
         map.addLayer({
-          id: layerId,
+          id: lineLayerId,
           type: 'line',
           source: sourceId,
           layout: {
@@ -56,22 +83,48 @@ export default function RouteLayer({ map, coordinates }: RouteLayerProps) {
             'line-cap': 'round',
           },
           paint: {
-            'line-color': COLORS.ROUTE_LINE,
+            // Use Red if exceeds limit, otherwise standard blue
+            'line-color': [
+              'case',
+              ['get', 'exceedsLimit'],
+              '#ef4444', // Red
+              COLORS.ROUTE_LINE // Blue
+            ],
             'line-width': COLORS.ROUTE_LINE_WIDTH,
             'line-opacity': 0.8,
           },
         })
       }
 
-      // Fit map bounds to show the entire route
-      if (coordinates.length > 0) {
-        const bounds = new mapboxgl.LngLatBounds()
-
-        coordinates.forEach((coord) => {
-          bounds.extend([coord[0], coord[1]])
+      // Add Label Layer
+      if (!map.getLayer(labelLayerId)) {
+        map.addLayer({
+          id: labelLayerId,
+          type: 'symbol',
+          source: sourceId,
+          layout: {
+            'symbol-placement': 'line-center',
+            'text-field': ['concat', ['to-string', ['round', ['get', 'distance']]], ' nm'],
+            'text-size': 12, // Fixed size, does not scale with zoom (zoom-independent)
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-offset': [0, 1], // Offset slightly above line
+            'text-allow-overlap': false,
+            'text-ignore-placement': false
+          },
+          paint: {
+            'text-color': '#1f2937', // Gray-800
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 2
+          }
         })
+      }
 
-        // Check bounds validity before fitting
+      // Fit bounds
+      const allCoords = route.coordinates || []
+      if (allCoords.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds()
+        allCoords.forEach((coord) => bounds.extend([coord[0], coord[1]]))
+
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds, {
             padding: 100,
@@ -80,26 +133,23 @@ export default function RouteLayer({ map, coordinates }: RouteLayerProps) {
           })
         }
       }
+
     } catch (err) {
       console.warn('Error updating route layer:', err)
     }
 
-    // Cleanup function
     return () => {
       try {
         if (map.getStyle()) {
-          if (map.getLayer(layerId)) {
-            map.removeLayer(layerId)
-          }
-          if (map.getSource(sourceId)) {
-            map.removeSource(sourceId)
-          }
+          if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId)
+          if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId)
+          if (map.getSource(sourceId)) map.removeSource(sourceId)
         }
       } catch (err) {
         console.warn('Error removing route layer:', err)
       }
     }
-  }, [map, coordinates])
+  }, [map, route])
 
   return null
 }

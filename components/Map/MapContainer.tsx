@@ -42,6 +42,11 @@ export default function MapContainer() {
   const [reasoning, setReasoning] = useState<RouteReasoningResponse | null>(null)
   const [isLoadingReasoning, setIsLoadingReasoning] = useState(false)
   const [showReasoning, setShowReasoning] = useState(false)
+  const [weather, setWeather] = useState<Array<{
+    station: string
+    metar: any | null
+    taf: any | null
+  }> | undefined>(undefined)
 
   // Track current route endpoints for clustering exclusion
   const [currentDepartureId, setCurrentDepartureId] = useState<string | undefined>(undefined)
@@ -602,6 +607,42 @@ export default function MapContainer() {
         // Extract waypoint coordinates from route
         const waypointCoords = routeResult.coordinates.slice(1, -1) as Array<[number, number]>
 
+        // Compute bounding box for hazards fetching
+        const lons = routeResult.coordinates.map(c => c[0])
+        const lats = routeResult.coordinates.map(c => c[1])
+        const minLon = Math.min(...lons)
+        const maxLon = Math.max(...lons)
+        const minLat = Math.min(...lats)
+        const maxLat = Math.max(...lats)
+        const bounds = `${minLon},${minLat},${maxLon},${maxLat}`
+
+        // Fetch weather (METAR/TAF for departure & arrival) and hazards in parallel
+        const weatherIds = [departure.id, arrival.id].join(',')
+
+        const [weatherRes, hazardsRes] = await Promise.all([
+          fetch(`/api/weather?ids=${encodeURIComponent(weatherIds)}`),
+          fetch(`/api/hazards?bounds=${encodeURIComponent(bounds)}`),
+        ])
+
+        let weatherData: any = null
+        let hazardsData: any = null
+
+        if (weatherRes && weatherRes.ok) {
+          try {
+            weatherData = await weatherRes.json()
+            // Store weather data in state for the reasoning panel
+            if (weatherData?.stations) {
+              setWeather(weatherData.stations)
+            }
+          } catch (e) {
+            console.warn('Failed parsing weather response', e)
+          }
+        }
+
+        if (hazardsRes && hazardsRes.ok) {
+          try { hazardsData = await hazardsRes.json() } catch (e) { console.warn('Failed parsing hazards response', e) }
+        }
+
         const response = await fetch('/api/reasoning', {
           method: 'POST',
           headers: {
@@ -617,6 +658,8 @@ export default function MapContainer() {
             distance_nm: routeResult.distance_nm,
             estimated_time_min: routeResult.estimated_time_min,
             route_type: routeResult.type,
+            weather: weatherData?.stations || undefined,
+            hazards: hazardsData?.hazards || undefined,
           }),
         })
 
@@ -682,7 +725,7 @@ export default function MapContainer() {
         map && console.log('🛑 Not rendering AirportMarkers: airports.length =', airports.length)
       )}
       {map && waypoints.length > 0 && <WaypointMarkers map={map} waypoints={waypoints} />}
-      {map && route && <RouteLayer map={map} coordinates={route.coordinates} />}
+      {map && route && <RouteLayer map={map} route={route} />}
 
       {error && (
         <ErrorDisplay
@@ -698,7 +741,7 @@ export default function MapContainer() {
         onClearRoute={handleClearRoute}
         isCalculating={isCalculating}
         routeInfo={route ? {
-          distance_nm: route.distance_nm,
+          distance_nm: Math.round(route.distance_nm),
           estimated_time_min: route.estimated_time_min,
           type: route.type,
         } : null}
@@ -709,6 +752,7 @@ export default function MapContainer() {
         isLoading={isLoadingReasoning}
         isVisible={showReasoning}
         onToggle={handleToggleReasoning}
+        weather={weather}
       />
 
       <CacheStatus />
