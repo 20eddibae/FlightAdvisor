@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "R-2501 (Example)",
+        "type": "RESTRICTED",
+        "floor_msl": 0,
+        "ceiling_msl": 8000,
+        "notes": "Example restricted area - operations prohibited without authorization"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-122.05, 37.95],
+            [-122.05, 37.85],
+            [-121.95, 37.85],
+            [-121.95, 37.95],
+            [-122.05, 37.95]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "R-2502 (Example)",
+        "type": "RESTRICTED",
+        "floor_msl": 0,
+        "ceiling_msl": 12000,
+        "notes": "Example restricted area - military operations area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-121.7, 38.1],
+            [-121.7, 38.0],
+            [-121.6, 38.0],
+            [-121.6, 38.1],
+            [-121.7, 38.1]
+          ]
+        ]
+      }
+    }
+  ]
+}

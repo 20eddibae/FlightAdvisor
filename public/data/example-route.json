@@ -1,0 +1,45 @@
+
+{
+  "departure": "KSQL",
+  "arrival": "KSMF",
+  "route_type": "avoiding_airspace",
+  "waypoints": ["SUNOL", "PYE", "SAC"],
+  "coordinates": [
+    [-122.2495, 37.5119],
+    [-121.8872, 37.5931],
+    [-121.8503, 37.6636],
+    [-121.4936, 38.5108],
+    [-121.4932, 38.5125]
+  ],
+  "distance_nm": 87.3,
+  "estimated_time_min": 52,
+  "cruise_altitude": 5500,
+  "reasoning": {
+    "summary": "Route avoids SFO Class B airspace using SUNOL waypoint for positive navigation, then direct to Sacramento VORTAC.",
+    "steps": [
+      {
+        "segment": "KSQL → SUNOL",
+        "rationale": "Initial climb heading 070° clears Class B floor (3000' MSL) while providing terrain clearance over East Bay hills.",
+        "airspace_notes": "Remains in Class E airspace, no clearance required",
+        "alternatives_considered": "Direct route passes through SFO Class B — would require clearance"
+      },
+      {
+        "segment": "SUNOL → PYE",
+        "rationale": "Pyramid VOR provides positive navigation fix and backup if GPS fails.",
+        "airspace_notes": "Clear of all restricted areas",
+        "alternatives_considered": "CCR routing adds 12nm"
+      },
+      {
+        "segment": "PYE → SAC → KSMF",
+        "rationale": "Direct routing using Sacramento VORTAC for approach alignment.",
+        "airspace_notes": "Standard arrival corridor",
+        "alternatives_considered": "None — optimal direct path"
+      }
+    ]
+  },
+  "weather_assumptions": {
+    "conditions": "VFR",
+    "visibility": "10+ SM",
+    "winds_aloft": "Light and variable"
+  }
+}

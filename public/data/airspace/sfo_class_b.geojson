@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "SFO Class B Airspace",
+        "type": "CLASS_B",
+        "floor_msl": 3000,
+        "ceiling_msl": 10000,
+        "notes": "Simplified representation of SFO Class B. Two-way radio communication, transponder with Mode C, and ATC clearance required for entry."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-122.5, 37.85],
+            [-122.6, 37.65],
+            [-122.55, 37.45],
+            [-122.3, 37.35],
+            [-122.0, 37.45],
+            [-122.1, 37.65],
+            [-122.2, 37.85],
+            [-122.5, 37.85]
+          ]
+        ]
+      }
+    }
+  ]
+}

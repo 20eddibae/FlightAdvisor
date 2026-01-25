@@ -1,0 +1,22 @@
+{
+  "airports": [
+    {
+      "id": "KSQL",
+      "name": "San Carlos Airport",
+      "lat": 37.5119,
+      "lon": -122.2495,
+      "elevation": 5,
+      "type": "non-towered",
+      "notes": "Class D airspace when tower active (0700-2100 local); watch SFO Class B overhead starting at 3000' MSL"
+    },
+    {
+      "id": "KSMF",
+      "name": "Sacramento Executive Airport",
+      "lat": 38.5125,
+      "lon": -121.4932,
+      "elevation": 24,
+      "type": "towered",
+      "notes": "Class D airspace; tower frequency 118.5"
+    }
+  ]
+}

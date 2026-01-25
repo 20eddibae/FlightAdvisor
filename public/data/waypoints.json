@@ -1,0 +1,39 @@
+{
+  "waypoints": [
+    {
+      "id": "SUNOL",
+      "name": "Sunol",
+      "lat": 37.5931,
+      "lon": -121.8872,
+      "type": "GPS_FIX",
+      "description": "Named GPS waypoint in East Bay, commonly used for routing south of Oakland and Hayward airspace"
+    },
+    {
+      "id": "PYE",
+      "name": "Pyramid VOR",
+      "lat": 37.6636,
+      "lon": -121.8503,
+      "type": "VOR",
+      "frequency": "112.2",
+      "description": "Pyramid VOR - key navigation aid for Central Valley routing and Delta region transitions"
+    },
+    {
+      "id": "CCR",
+      "name": "Concord VOR",
+      "lat": 37.9897,
+      "lon": -122.0569,
+      "type": "VOR",
+      "frequency": "117.0",
+      "description": "Concord VOR navigation aid located at Buchanan Field, useful for northern routing around SFO Class B"
+    },
+    {
+      "id": "SAC",
+      "name": "Sacramento VORTAC",
+      "lat": 38.5108,
+      "lon": -121.4936,
+      "type": "VORTAC",
+      "frequency": "115.2",
+      "description": "Sacramento VORTAC - primary approach and departure navigation aid for Sacramento Executive Airport"
+    }
+  ]
+}
