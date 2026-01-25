@@ -110,7 +110,21 @@ export default function AirportMarkers({ map, airports, departureId, destination
         // Cluster popup showing airport list
         const airportList = cluster.airports
           .slice(0, 10)
-          .map(ap => `<li style="font-size: 10px;">${ap.id} - ${ap.name}</li>`)
+          .map(ap => {
+            const apIdIsMongoId = ap.id.length === 24 && /^[a-f0-9]{24}$/i.test(ap.id)
+            const apNameIsMongoId = ap.name.length === 24 && /^[a-f0-9]{24}$/i.test(ap.name)
+
+            // Don't show MongoDB IDs
+            if (apIdIsMongoId && apNameIsMongoId) {
+              return `<li style="font-size: 10px;">Airport</li>`
+            } else if (apIdIsMongoId) {
+              return `<li style="font-size: 10px;">${ap.name}</li>`
+            } else if (apNameIsMongoId) {
+              return `<li style="font-size: 10px;">${ap.id}</li>`
+            } else {
+              return `<li style="font-size: 10px;">${ap.id} - ${ap.name}</li>`
+            }
+          })
           .join('')
 
         const hasMore = cluster.airports.length > 10
@@ -159,10 +173,17 @@ export default function AirportMarkers({ map, airports, departureId, destination
         const isWeatherStation = airport._metadata?.isWeatherStation
 
         // Create popup with airport information
+        // Check for MongoDB IDs to avoid showing ugly hex strings
+        const popupIdIsMongoId = airport.id.length === 24 && /^[a-f0-9]{24}$/i.test(airport.id)
+        const popupNameIsMongoId = airport.name.length === 24 && /^[a-f0-9]{24}$/i.test(airport.name)
+
+        const displayId = popupIdIsMongoId ? '' : airport.id
+        const displayName = popupNameIsMongoId ? `${airport.type === 'towered' ? 'Towered' : 'Non-towered'} Airport` : airport.name
+
         let popupHTML = `
           <div style="padding: 6px; font-family: sans-serif; min-width: 200px;">
-            <strong style="font-size: 14px;">${airport.id}</strong><br/>
-            <span style="font-size: 11px; color: #666;">${airport.name}</span><br/>
+            ${displayId ? `<strong style="font-size: 14px;">${displayId}</strong><br/>` : ''}
+            <span style="font-size: ${displayId ? '11px' : '14px'}; ${displayId ? 'color: #666;' : 'font-weight: bold;'}">${displayName}</span><br/>
         `
 
         if (isWeatherStation && airport._metadata?.metar) {
@@ -222,8 +243,12 @@ export default function AirportMarkers({ map, airports, departureId, destination
         // Detect MongoDB ObjectId and use name instead
         const isMongoId = airport.id.length === 24 && /^[a-f0-9]{24}$/i.test(airport.id)
         const isICAO = /^[A-Z0-9]{3,5}$/i.test(airport.id)
+        const nameIsMongoId = airport.name.length === 24 && /^[a-f0-9]{24}$/i.test(airport.name)
 
-        if (isMongoId) {
+        if (nameIsMongoId) {
+          // If name is also MongoDB ID, show "Airport" instead
+          labelEl.textContent = 'Airport'
+        } else if (isMongoId) {
           labelEl.textContent = airport.name // Show name for MongoDB IDs
         } else if (isICAO) {
           labelEl.textContent = airport.id // Show ICAO code

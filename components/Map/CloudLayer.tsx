@@ -17,10 +17,9 @@ interface CloudLayerProps {
 export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
   const sourceId = 'metar-cloud-overlay'
   const overlayCircleLayerId = 'cloud-coverage-overlay'
-  const labelLayerId = 'cloud-station-labels'
   const hasInitialized = useRef(false)
 
-  // NOTE: Green dots are now rendered by AirportMarkers component for UI consistency and searchability
+  // NOTE: Green dots and labels are now rendered by AirportMarkers component for UI consistency and searchability
 
   console.log('🌤️ CloudLayer component rendered with props:', {
     hasMap: !!map,
@@ -173,52 +172,9 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
         })
       }
 
-      // Layer 2: Labels showing station ID and conditions
-      if (!map.getLayer(labelLayerId)) {
-        map.addLayer({
-          id: labelLayerId,
-          type: 'symbol',
-          source: sourceId,
-          layout: {
-            'text-field': [
-              'concat',
-              ['get', 'id'],
-              '\n',
-              ['get', 'fltcat'],
-              ' ',
-              ['get', 'cover']
-            ],
-            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-            'text-size': 10,
-            'text-anchor': 'top',
-            'text-offset': [0, 1.2],  // Position below the airport marker
-            'text-allow-overlap': false,
-            'text-ignore-placement': false,
-          },
-          paint: {
-            'text-color': [
-              'case',
-              ['==', ['get', 'fltcat'], 'VFR'],
-              '#00ff00',
-              ['==', ['get', 'fltcat'], 'MVFR'],
-              '#ffff00',
-              ['==', ['get', 'fltcat'], 'IFR'],
-              '#ff8c00',
-              ['==', ['get', 'fltcat'], 'LIFR'],
-              '#ff0000',
-              '#808080'
-            ],
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 2,
-            'text-halo-blur': 1,
-          },
-          minzoom: 8, // Only show labels when zoomed in closer
-        })
-      }
-
       hasInitialized.current = true
-      console.log('✅ Cloud overlay layers initialized (2 layers: overlay circles, labels)')
-      console.log('   Green dots are rendered by AirportMarkers component for consistency')
+      console.log('✅ Cloud overlay layer initialized (1 layer: overlay circles only)')
+      console.log('   Green dots and labels rendered by AirportMarkers component for consistency')
     }
 
     // Update data when cloudData changes
@@ -233,9 +189,6 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
       // Only remove on unmount if map still exists
       if (map && hasInitialized.current) {
         try {
-          if (map.getLayer(labelLayerId)) {
-            map.removeLayer(labelLayerId)
-          }
           if (map.getLayer(overlayCircleLayerId)) {
             map.removeLayer(overlayCircleLayerId)
           }
@@ -243,7 +196,7 @@ export default function CloudLayer({ map, cloudData }: CloudLayerProps) {
             map.removeSource(sourceId)
           }
           hasInitialized.current = false
-          console.log('🧹 Cleaned up cloud overlay layers')
+          console.log('🧹 Cleaned up cloud overlay layer')
         } catch (e) {
           // Ignore errors during cleanup (map might be destroyed)
         }
