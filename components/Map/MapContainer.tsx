@@ -7,6 +7,8 @@ import RouteControls from '../Controls/RouteControls'
 import ReasoningPanel from '../Controls/ReasoningPanel'
 import ErrorDisplay from '../Controls/ErrorDisplay'
 import { CacheStatus } from '../Controls/CacheStatus'
+import SaveFlightButton from '../Controls/SaveFlightButton'
+import SavedFlightsPanel from '../Controls/SavedFlightsPanel'
 import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson'
 import { simplifyAirspace } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
@@ -63,6 +65,15 @@ export default function MapContainer() {
   const [currentDestinationId, setCurrentDestinationId] = useState<string | undefined>(undefined)
 
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
+
+  const departureName = currentDeparture
+    ? getAirportById(currentDeparture)?.name || airports.find(a => a.id === currentDeparture)?.name
+    : undefined
+  const arrivalName = currentArrival
+    ? getAirportById(currentArrival)?.name || airports.find(a => a.id === currentArrival)?.name
+    : undefined
+
+  const weatherSnapshot = weather ? { stations: weather } : null
 
   // Debounce timer for viewport updates
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -939,6 +950,17 @@ export default function MapContainer() {
           distance_nm: route.distance_nm,
           estimated_time_min: route.estimated_time_min,
         } : undefined}
+      />
+
+      <SavedFlightsPanel />
+      <SaveFlightButton
+        departure={currentDeparture}
+        arrival={currentArrival}
+        departureName={departureName}
+        arrivalName={arrivalName}
+        routeData={route}
+        weather={weatherSnapshot}
+        disabled={!route || !currentDeparture || !currentArrival}
       />
 
       <CacheStatus />
