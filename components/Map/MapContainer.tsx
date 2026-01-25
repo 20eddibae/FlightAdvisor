@@ -21,10 +21,11 @@ const WaypointMarkers = dynamic(() => import('./WaypointMarkers'), { ssr: false 
 const AirspaceLayer = dynamic(() => import('./AirspaceLayer'), { ssr: false })
 const RouteLayer = dynamic(() => import('./RouteLayer'), { ssr: false })
 const CloudLayer = dynamic(() => import('./CloudLayer'), { ssr: false })
+const WindLayer = dynamic(() => import('./WindLayer'), { ssr: false })
 
 
 export default function MapContainer() {
-  const { cache, getAirportsInViewport, getAirportById, addWeatherStations, isInitialized } = useAirportCache()
+  const { cache, getAirportsInViewport, getAirportById, isInitialized } = useAirportCache()
 
   const [map, setMap] = useState<MapRef | null>(null)
   const [airports, setAirports] = useState<Airport[]>([])
@@ -54,6 +55,7 @@ export default function MapContainer() {
   // Cloud data for map visualization (METAR GeoJSON)
   const [cloudData, setCloudData] = useState<GeoJSON.FeatureCollection | null>(null)
   const [showCloudLayer, setShowCloudLayer] = useState(true) // Toggle for cloud visibility
+  const [showWindLayer, setShowWindLayer] = useState(false) // Toggle for wind visibility
   const lastCloudFetchRef = useRef<number>(0) // Start at 0 to force initial fetch
 
   // Track current route endpoints for clustering exclusion
@@ -118,16 +120,14 @@ export default function MapContainer() {
     })
 
     // Check if we need to refresh (5-minute cache)
-    if (now - lastCloudFetchRef.current < CLOUD_CACHE_TTL) {
-      // Still within cache window, skip fetch
-      console.log('⏭️ Skipping cloud fetch - still within cache window')
-      return
-    }
 
     try {
       // Get current viewport bounds
       const bounds = mapInstance.getBounds()
-      if (!bounds) return
+      if (!bounds) {
+        console.warn('⚠️ Map bounds not available')
+        return
+      }
 
       const bbox = [
         bounds.getWest(),
@@ -188,29 +188,25 @@ export default function MapContainer() {
 
         console.log(`🌡️ Converting ${weatherStationAirports.length} weather stations to airport objects`)
 
-        // Add weather stations to cache for searchability
-        if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized) {
-          const cachedWeatherStations = weatherStationAirports.map(ap => ({
-            id: ap.id,
-            name: ap.name,
-            lat: ap.lat,
-            lon: ap.lon,
-            elevation: ap.elevation,
-            type: ap.type,
-            notes: ap.notes,
-            _metadata: ap._metadata || {
-              isWeatherStation: true,
-              source: 'weather-api' as const,
-              cachedAt: Date.now()
-            }
-          }))
-
-          // Insert weather stations into the cache spatial index
-          // Use the destructured function instead of accessing cache directly
-          addWeatherStations(cachedWeatherStations)
-          console.log(`✅ Added ${cachedWeatherStations.length} weather stations to cache (searchable)`)
-        }
-
+                  // Insert weather stations into the cache spatial index
+                  if (FEATURE_FLAGS.USE_AIRPORT_CACHE && isInitialized && cache) {
+                    const cachedWeatherStations = weatherStationAirports.map(ap => ({
+                      id: ap.id,
+                      name: ap.name,
+                      lat: ap.lat,
+                      lon: ap.lon,
+                      elevation: ap.elevation,
+                      type: ap.type,
+                      notes: ap.notes,
+                      _metadata: {
+                        ...(ap._metadata || {}),
+                        source: 'weather-api' as const
+                      }
+                    }))
+        
+                    cache.addWeatherStations(cachedWeatherStations)
+                    console.log(`✅ Added ${cachedWeatherStations.length} weather stations to cache (searchable)`)
+                  }
         // Merge weather stations with existing airports
         // Remove old weather station entries first to avoid duplicates
         setAirports(prevAirports => {
@@ -234,7 +230,7 @@ export default function MapContainer() {
       console.error('❌ Failed to fetch cloud data:', error)
       // Don't show error to user - cloud data is supplementary
     }
-  }, [addWeatherStations, isInitialized])
+  }, [cache, isInitialized])
 
   const loadDataForViewport = useCallback(async (mapInstance: MapRef) => {
     try {
@@ -273,7 +269,7 @@ export default function MapContainer() {
           .forEach(ap => {
             // Check if this is a heliport (based on notes or type)
             const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
-              ap.notes?.toLowerCase().includes('helipad')
+                              ap.notes?.toLowerCase().includes('helipad')
 
             if (isHeliport) {
               heliports.push({
@@ -318,7 +314,7 @@ export default function MapContainer() {
 
           allAirports.forEach(ap => {
             const isHeliport = ap.notes?.toLowerCase().includes('heliport') ||
-              ap.notes?.toLowerCase().includes('helipad')
+                              ap.notes?.toLowerCase().includes('helipad')
 
             if (isHeliport) {
               updatedHeliports.push({
@@ -872,6 +868,11 @@ export default function MapContainer() {
     console.log('☁️ Cloud layer toggled:', !showCloudLayer)
   }, [showCloudLayer])
 
+  const handleToggleWindLayer = useCallback(() => {
+    setShowWindLayer((prev) => !prev)
+    console.log('💨 Wind layer toggled:', !showWindLayer)
+  }, [showWindLayer])
+
   const handleDismissError = useCallback(() => {
     setError(null)
   }, [])
@@ -881,6 +882,7 @@ export default function MapContainer() {
       <MapView onMapLoad={handleMapLoad} />
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
       {map && cloudData && showCloudLayer && <CloudLayer map={map} cloudData={cloudData} />}
+      {map && <WindLayer map={map} visible={showWindLayer} />}
       {map && airports.length > 0 ? (
         <>
           {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports:`, {
@@ -921,6 +923,8 @@ export default function MapContainer() {
         } : null}
         showCloudLayer={showCloudLayer}
         onToggleCloudLayer={handleToggleCloudLayer}
+        showWindLayer={showWindLayer}
+        onToggleWindLayer={handleToggleWindLayer}
       />
 
       <ReasoningPanel

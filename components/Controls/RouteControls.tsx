@@ -16,7 +16,8 @@ import {
   Clock,
   ArrowRight,
   Cloud,
-  CloudOff
+  CloudOff,
+  Wind,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +32,8 @@ interface RouteControlsProps {
   } | null
   showCloudLayer: boolean
   onToggleCloudLayer: () => void
+  showWindLayer: boolean
+  onToggleWindLayer: () => void
 }
 
 export default function RouteControls({
@@ -40,6 +43,8 @@ export default function RouteControls({
   routeInfo,
   showCloudLayer,
   onToggleCloudLayer,
+  showWindLayer,
+  onToggleWindLayer,
 }: RouteControlsProps) {
   const [departure, setDeparture] = useState<CachedAirport | null>(null)
   const [destination, setDestination] = useState<CachedAirport | null>(null)
@@ -140,6 +145,19 @@ export default function RouteControls({
                     title={showCloudLayer ? "Hide Cloud Layer" : "Show Cloud Layer"}
                   >
                     {showCloudLayer ? <Cloud className="w-5 h-5" /> : <CloudOff className="w-5 h-5" />}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={cn(
+                      "h-12 w-12 rounded-2xl transition-all duration-300",
+                      showWindLayer ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-400"
+                    )}
+                    onClick={onToggleWindLayer}
+                    title={showWindLayer ? "Hide Wind Barbs" : "Show Wind Barbs"}
+                  >
+                    <Wind className="w-5 h-5" />
                   </Button>
 
                   <Button
