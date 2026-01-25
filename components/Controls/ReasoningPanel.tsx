@@ -23,6 +23,7 @@ interface ReasoningPanelProps {
     distance_nm: number
     estimated_time_min: number
   }
+  onSegmentSelect?: (index: number | null) => void
 }
 
 export default function ReasoningPanel({
@@ -30,6 +31,7 @@ export default function ReasoningPanel({
   isLoading,
   weather,
   route,
+  onSegmentSelect,
 }: ReasoningPanelProps) {
   const [chatMessages, setChatMessages] = useState<AnalysisMessage[]>([])
   const [isChatLoading, setIsChatLoading] = useState(false)
@@ -76,7 +78,11 @@ export default function ReasoningPanel({
 
           {!isLoading && reasoning && (
             <div className="space-y-6 pb-6">
-              <StructuredReasoningDisplay reasoning={reasoning} weather={weather} />
+              <StructuredReasoningDisplay
+                reasoning={reasoning}
+                weather={weather}
+                onSegmentSelect={onSegmentSelect}
+              />
 
               {/* Display chat messages as analysis boxes */}
               {chatMessages.length > 0 && (
@@ -172,7 +178,8 @@ function formatWind(metar: { wdir?: number | null; wspd?: number | null; wgst?: 
  */
 function StructuredReasoningDisplay({
   reasoning,
-  weather
+  weather,
+  onSegmentSelect,
 }: {
   reasoning: RouteReasoningResponse
   weather?: Array<{
@@ -180,18 +187,28 @@ function StructuredReasoningDisplay({
     metar: any | null
     taf: any | null
   }>
+  onSegmentSelect?: (index: number | null) => void
 }) {
   const [selectedSegment, setSelectedSegment] = useState<number | null>(null)
   const { Altitude, Issues, Segment_Analysis, Mag_Heading, Go_NoGo, Go_NoGo_Reasoning } = reasoning
 
-  // Debug: Log weather prop
-  console.log('🌤️ StructuredReasoningDisplay weather prop:', weather)
+  const handleSegmentClick = (idx: number | null) => {
+    setSelectedSegment(idx)
+    if (onSegmentSelect) {
+      onSegmentSelect(idx)
+    }
+  }
 
   // Parse Go/No-Go reasoning into bullet points
   const goNoGoBullets = Go_NoGo_Reasoning.split(/[.;]/).filter(s => s.trim().length > 10).slice(0, 4)
 
   // Extract segment labels (waypoint names) from segment analysis
   const getSegmentLabel = (segmentText: string, index: number): { from: string; to: string } => {
+    // Override last segment to be called "Landing"
+    if (index === Segment_Analysis.length - 1) {
+      return { from: 'Landing', to: '' }
+    }
+
     // Try to match patterns like "KSQL to SUNOL", "Segment 1: KSQL to SUNOL", etc.
     const toPattern = /\b([A-Z]{3,5})\s+(?:to|→|-)\s+([A-Z]{3,5})\b/i
     const match = segmentText.match(toPattern)
@@ -302,7 +319,7 @@ function StructuredReasoningDisplay({
             return (
               <button
                 key={idx}
-                onClick={() => setSelectedSegment(selectedSegment === idx ? null : idx)}
+                onClick={() => handleSegmentClick(selectedSegment === idx ? null : idx)}
                 className={`flex-shrink-0 py-2 px-2 rounded-lg font-semibold text-sm transition-all ${selectedSegment === idx
                   ? 'bg-blue-600 text-white shadow-lg scale-105'
                   : 'bg-white border-2 border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50'

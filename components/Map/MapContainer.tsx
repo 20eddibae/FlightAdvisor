@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import MapView from './MapView'
 import RouteControls from '../Controls/RouteControls'
@@ -11,7 +11,7 @@ import type { Airport, Waypoint, AirspaceFeatureCollection } from '@/lib/geojson
 import { simplifyAirspace } from '@/lib/geojson'
 import { calculateRouteAsync, RouteResult } from '@/lib/routing/route'
 import type { MapRef } from './MapView'
-import { US_REGIONS, FEATURE_FLAGS } from '@/lib/constants'
+import { FEATURE_FLAGS, DEFAULT_BOUNDS } from '@/lib/constants'
 import type { RouteReasoningResponse } from '@/lib/api/gemini'
 import { useAirportCache } from '../Cache/AirportCacheProvider'
 
@@ -38,7 +38,14 @@ export default function MapContainer() {
     console.warn(`⚠️  MapContainer excessive renders: #${renderCount.current}`)
   }
 
-  const [route, setRoute] = useState<RouteResult | null>(null)
+  // State for multiple routes
+  const [routes, setRoutes] = useState<RouteResult[]>([])
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0)
+  const [highlightedSegmentIndex, setHighlightedSegmentIndex] = useState<number | null>(null)
+
+  // Derived current route for UI convenience
+  const currentRoute = routes[selectedRouteIndex] || null
+
   const [currentDeparture, setCurrentDeparture] = useState<string>('')
   const [currentArrival, setCurrentArrival] = useState<string>('')
   const [isCalculating, setIsCalculating] = useState(false)
@@ -56,11 +63,36 @@ export default function MapContainer() {
   const [showCloudLayer, setShowCloudLayer] = useState(true) // Toggle for cloud visibility
   const lastCloudFetchRef = useRef<number>(0) // Start at 0 to force initial fetch
 
+  // New state for global airspace loading
+  const [isLoadingAirspace, setIsLoadingAirspace] = useState(true)
+
   // Track current route endpoints for clustering exclusion
   const [currentDepartureId, setCurrentDepartureId] = useState<string | undefined>(undefined)
   const [currentDestinationId, setCurrentDestinationId] = useState<string | undefined>(undefined)
 
   const [error, setError] = useState<{ title: string; message: string } | null>(null)
+
+  // Derived state for map visibility
+  // Filter airports and waypoints if a route is active (show only relevant points)
+  const isRouteActive = routes.length > 0
+
+  const displayedAirports = useMemo(() => {
+    if (!isRouteActive) return airports
+    return airports.filter(ap => ap.id === currentDeparture || ap.id === currentArrival)
+  }, [airports, isRouteActive, currentDeparture, currentArrival])
+
+  const displayedWaypoints = useMemo(() => {
+    if (!isRouteActive) return waypoints
+    // Check if waypoint is used in ANY of the calculated routes
+    return waypoints.filter(wp => routes.some(r => r.waypoints.includes(wp.id)))
+  }, [waypoints, isRouteActive, routes])
+
+  // ... (existing refs and effects) ...
+  // Keep existing effects for cleanup, cloud data, map load...
+
+  // ... (loadDataForViewport, handleMapLoad exist above, unchanged until handlePlanRoute) ...
+
+
 
   // Debounce timer for viewport updates
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -101,6 +133,16 @@ export default function MapContainer() {
       viewportCacheRef.current.clear()
     }
   }, [map])
+
+  // Route calculation worker
+  const workerRef = useRef<Worker | null>(null)
+
+  useEffect(() => {
+    workerRef.current = new Worker(new URL('../../lib/routing/route.worker.ts', import.meta.url))
+    return () => {
+      workerRef.current?.terminate()
+    }
+  }, [])
 
   /**
    * Fetch cloud data (METAR) for the current viewport
@@ -422,24 +464,29 @@ export default function MapContainer() {
           }
           return cached.navaids
         })
+        /*
         setAirspace(prev => {
           if (prev && prev.features.length === cached.airspace.features.length) {
             return prev // Keep same reference to prevent AirspaceLayer re-render
           }
           return cached.airspace
         })
+        */
         console.log(`✓ Using cached navaids/airspace for ${cacheKey}`)
       } else {
         // Fetch navaids and airspace (in parallel)
         try {
+          const navaidsRes = await fetch(`/api/openaip?type=navaids&bounds=${bbox}`)
+          /*
           const [navaidsRes, airspaceRes] = await Promise.all([
             fetch(`/api/openaip?type=navaids&bounds=${bbox}`),
             fetch(`/api/openaip?type=airspace&bounds=${bbox}`),
           ])
+          */
 
           // Handle partial failures gracefully
           let waypoints: Waypoint[] = []
-          let airspace: AirspaceFeatureCollection = { type: 'FeatureCollection', features: [] }
+          // let airspace: AirspaceFeatureCollection = { type: 'FeatureCollection', features: [] }
 
           if (navaidsRes.ok) {
             const navaidsData = await navaidsRes.json()
@@ -517,6 +564,7 @@ export default function MapContainer() {
 
           console.log(`✓ Waypoints prepared: ${waypoints.length} navaids (airports will render separately as green markers)`)
 
+          /*
           if (airspaceRes.ok) {
             const airspaceData = await airspaceRes.json()
             // Simplify airspace polygons for better rendering performance
@@ -524,6 +572,7 @@ export default function MapContainer() {
           } else {
             console.warn('Failed to fetch airspace, using empty set')
           }
+          */
 
           // Update state (only if different to prevent unnecessary re-renders)
           setWaypoints(prev => {
@@ -532,29 +581,31 @@ export default function MapContainer() {
             }
             return waypoints
           })
+          /*
           setAirspace(prev => {
             if (prev && prev.features.length === airspace.features.length) {
               return prev
             }
             return airspace
           })
+          */
 
           // Cache for future use
           viewportCache.set(cacheKey, {
             navaids: waypoints,
-            airspace,
+            airspace: { type: 'FeatureCollection', features: [] }, // Empty airspace in cache as we use global
             timestamp: Date.now()
           })
 
           console.log(
-            `✓ Loaded ${waypoints.length} waypoints, ${airspace.features.length} airspace features`
+            `✓ Loaded ${waypoints.length} waypoints (airspace handled globally)`
           )
         } catch (error) {
-          console.warn('Error loading navaids/airspace:', error)
+          console.warn('Error loading navaids:', error)
           // Don't show error - airports are already displayed
           // Only clear if not already empty (prevent unnecessary re-renders)
           setWaypoints(prev => prev.length === 0 ? prev : [])
-          setAirspace(prev => (prev && prev.features.length === 0) ? prev : { type: 'FeatureCollection', features: [] })
+          // setAirspace(prev => (prev && prev.features.length === 0) ? prev : { type: 'FeatureCollection', features: [] })
         }
       }
     } catch (error) {
@@ -634,6 +685,39 @@ export default function MapContainer() {
     loadedMap.on('moveend', handleMoveEnd)
     console.log('Map initialization complete')
   }, [loadDataForViewport, updateCloudData, isInitialized])
+
+  // Load ALL airspace for the US on mount
+  useEffect(() => {
+    const loadAllAirspace = async () => {
+      console.log('🌎 efficient loading of ALL US Airspace...')
+      setIsLoadingAirspace(true)
+
+      try {
+        const boundsStr = DEFAULT_BOUNDS.join(',')
+        const response = await fetch(`/api/openaip?type=airspace&bounds=${boundsStr}`)
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.data) {
+            // Simplify airspace polygons for better rendering performance
+            // We can use a slightly higher tolerance here since we're loading so much data
+            const simplified = simplifyAirspace(data.data, 0.005)
+
+            setAirspace(simplified)
+            console.log(`✓ Loaded global airspace: ${simplified.features.length} features`)
+          }
+        } else {
+          console.warn('Failed to load global airspace')
+        }
+      } catch (err) {
+        console.error('Error loading global airspace:', err)
+      } finally {
+        setIsLoadingAirspace(false)
+      }
+    }
+
+    loadAllAirspace()
+  }, [])
 
   const handlePlanRoute = useCallback(async (departureCode: string, destinationCode: string, maxSegmentLength?: number) => {
     console.log('🛫 Planning route:', departureCode, '→', destinationCode, maxSegmentLength ? `(Max Segment: ${maxSegmentLength} NM)` : '')
@@ -725,15 +809,119 @@ export default function MapContainer() {
       }
 
       // Calculate route
-      const routeResult = await calculateRouteAsync({
-        departure,
-        arrival,
-        airspace,
-        waypoints,
-        maxSegmentLength,
-      })
+      const routeResults = await (async () => {
+        // Fix for "Why sometimes it works, and sometimes it doesn't?":
+        // The `waypoints` state only contains items currently VISIBLE in the viewport.
+        // If the user zooms in on departure, the destination waypoints might be unloaded.
+        // We must ensure we have data for the ENTIRE route area before calculating.
 
-      if (!routeResult) {
+        // 1. Calculate BBox for the whole trip with padding
+        const PADDING_DEG = 1.0 // ~60nm padding
+        const routeMinLon = Math.min(departure!.lon, arrival!.lon) - PADDING_DEG
+        const routeMinLat = Math.min(departure!.lat, arrival!.lat) - PADDING_DEG
+        const routeMaxLon = Math.max(departure!.lon, arrival!.lon) + PADDING_DEG
+        const routeMaxLat = Math.max(departure!.lat, arrival!.lat) + PADDING_DEG
+        const routeBbox = `${routeMinLon},${routeMinLat},${routeMaxLon},${routeMaxLat}`
+
+        console.log(`🌍 Fetching FULL route data for bbox: ${routeBbox}`)
+
+        // 2. Fetch missing data for the route corridor
+        try {
+          const [navaidsRes, airspaceRes] = await Promise.all([
+            fetch(`/api/openaip?type=navaids&bounds=${routeBbox}`),
+            fetch(`/api/openaip?type=airspace&bounds=${routeBbox}`),
+          ])
+
+          let routeWaypoints = [...waypoints] // Start with what we have
+          let routeAirspace = airspace ? { ...airspace } : { type: 'FeatureCollection', features: [] }
+
+          // 3. Merge/Parse Navaids
+          if (navaidsRes.ok) {
+            const navaidsData = await navaidsRes.json()
+            // ... (keep existing parsing logic) ...
+            const fetchedNavaids: Waypoint[] = navaidsData.data.map((navaid: any) => {
+              let waypointType: Waypoint['type'] = 'GPS_FIX'
+              if (navaid.type === 4) waypointType = 'VOR'
+              else if (navaid.type === 5) waypointType = 'VORTAC'
+              else if (navaid.type === 3) waypointType = 'NDB'
+              else if (navaid.type === 6) waypointType = 'INTERSECTION'
+
+              return {
+                id: navaid._id,
+                name: navaid.name,
+                lat: navaid.geometry.coordinates[1],
+                lon: navaid.geometry.coordinates[0],
+                type: waypointType,
+                frequency: navaid.frequency ? `${navaid.frequency.value} ${navaid.frequency.unit}` : undefined,
+                description: `Type ${navaid.type} navigation aid`,
+              }
+            })
+
+            // Remove duplicates
+            const existingIds = new Set(routeWaypoints.map(w => w.id))
+            const newWaypoints = fetchedNavaids.filter(w => !existingIds.has(w.id))
+            routeWaypoints = [...routeWaypoints, ...newWaypoints]
+          }
+
+          // 4. Merge/Parse Airspace
+          if (airspaceRes.ok) {
+            const airspaceData = await airspaceRes.json()
+            const simplifiedExtra = simplifyAirspace(airspaceData.data, 0.001)
+            routeAirspace = {
+              type: 'FeatureCollection',
+              features: [...(routeAirspace.features || []), ...simplifiedExtra.features]
+            }
+          }
+
+          // 5. Calculate with the COMPLETE dataset
+          return new Promise<RouteResult[]>((resolve, reject) => {
+            if (!workerRef.current) {
+              // Fallback if worker fails
+              calculateRouteAsync({
+                departure: departure!,
+                arrival: arrival!,
+                airspace: routeAirspace as any,
+                waypoints: routeWaypoints,
+                maxSegmentLength,
+              }).then(resolve).catch(reject)
+              return
+            }
+
+            const handler = (event: MessageEvent) => {
+              workerRef.current?.removeEventListener('message', handler)
+              const { success, results, error } = event.data
+              if (success) {
+                resolve(results)
+              } else {
+                reject(new Error(error))
+              }
+            }
+
+            workerRef.current.addEventListener('message', handler)
+            workerRef.current.postMessage({
+              departure: departure!,
+              arrival: arrival!,
+              airspace: routeAirspace,
+              waypoints: routeWaypoints,
+              maxSegmentLength,
+            })
+          })
+
+        } catch (fetchErr) {
+          console.warn('⚠️ Failed to fetch route-specific data, falling back to viewport data', fetchErr)
+          // Fallback to existing logic if fetch fails
+          return calculateRouteAsync({
+            departure: departure!,
+            arrival: arrival!,
+            airspace,
+            waypoints,
+            maxSegmentLength,
+          })
+        }
+      })()
+
+      // Handle Array result (now returns RouteResult[])
+      if (!routeResults || routeResults.length === 0) {
         setError({
           title: 'Route Calculation Failed',
           message: 'Unable to find a valid route between the airports. This may be due to airspace restrictions.',
@@ -742,9 +930,34 @@ export default function MapContainer() {
         return
       }
 
-      setRoute(routeResult)
+      setRoutes(routeResults)
+      setSelectedRouteIndex(0) // Select the best route by default
+
+      // Pick the best one (first one is best by distance sorting)
+      const bestRoute = routeResults[0]
       setCurrentDeparture(departure.id)
       setCurrentArrival(arrival.id)
+
+      // Zoom to fit the route
+      if (map) {
+        const lons = bestRoute.coordinates.map(c => c[0])
+        const lats = bestRoute.coordinates.map(c => c[1])
+        const minLon = Math.min(...lons)
+        const maxLon = Math.max(...lons)
+        const minLat = Math.min(...lats)
+        const maxLat = Math.max(...lats)
+
+        map.fitBounds(
+          [
+            [minLon, minLat],
+            [maxLon, maxLat]
+          ],
+          {
+            padding: { top: 50, bottom: 50, left: 50, right: 350 }, // Right padding for reasoning panel
+            duration: 1500
+          }
+        )
+      }
 
       // Fetch reasoning from API
       setIsLoadingReasoning(true)
@@ -753,11 +966,11 @@ export default function MapContainer() {
 
       try {
         // Extract waypoint coordinates from route
-        const waypointCoords = routeResult.coordinates.slice(1, -1) as Array<[number, number]>
+        const waypointCoords = bestRoute.coordinates.slice(1, -1) as Array<[number, number]>
 
         // Compute bounding box for hazards fetching
-        const lons = routeResult.coordinates.map(c => c[0])
-        const lats = routeResult.coordinates.map(c => c[1])
+        const lons = bestRoute.coordinates.map(c => c[0])
+        const lats = bestRoute.coordinates.map(c => c[1])
         const minLon = Math.min(...lons)
         const maxLon = Math.max(...lons)
         const minLat = Math.min(...lats)
@@ -798,12 +1011,18 @@ export default function MapContainer() {
             setWeather([]) // Set empty array on error
           }
         } else {
-          console.warn('⚠️ Weather API request failed or no valid airport IDs')
-          setWeather([]) // Set empty array if request failed
+          console.warn('⚠️ Weather API fetch failed or no valid IDs')
+          setWeather([])
         }
 
-        if (hazardsRes && hazardsRes.ok) {
-          try { hazardsData = await hazardsRes.json() } catch (e) { console.warn('Failed parsing hazards response', e) }
+        if (hazardsRes.ok) {
+          try {
+            hazardsData = await hazardsRes.json()
+          } catch (e) {
+            console.error('Failed parsing hazards response', e)
+          }
+        } else {
+          console.warn('⚠️ Hazards API fetch failed')
         }
 
         const response = await fetch('/api/reasoning', {
@@ -816,11 +1035,11 @@ export default function MapContainer() {
             arrival: arrival.id,
             departureCoords: [departure.lon, departure.lat],
             arrivalCoords: [arrival.lon, arrival.lat],
-            waypoints: routeResult.waypoints,
+            waypoints: bestRoute.waypoints,
             waypointCoords: waypointCoords,
-            distance_nm: routeResult.distance_nm,
-            estimated_time_min: routeResult.estimated_time_min,
-            route_type: routeResult.type,
+            distance_nm: bestRoute.distance_nm,
+            estimated_time_min: bestRoute.estimated_time_min,
+            route_type: bestRoute.type,
             weather: weatherData?.stations || undefined,
             hazards: hazardsData?.hazards || undefined,
           }),
@@ -852,10 +1071,11 @@ export default function MapContainer() {
     } finally {
       setIsCalculating(false)
     }
-  }, [airspace, airports, waypoints, isInitialized, getAirportById, cache])
+  }, [airspace, airports, waypoints, isInitialized, getAirportById, cache, map])
 
   const handleClearRoute = useCallback(() => {
-    setRoute(null)
+    setRoutes([])
+    setHighlightedSegmentIndex(null)
     setCurrentDeparture('')
     setCurrentArrival('')
     setReasoning(null)
@@ -876,30 +1096,45 @@ export default function MapContainer() {
     setError(null)
   }, [])
 
+
+
   return (
     <>
       <MapView onMapLoad={handleMapLoad} />
+
+      {/* Global Airspace Loading Indicator */}
+      {isLoadingAirspace && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 animate-in fade-in zoom-in duration-300">
+          <div className="bg-white/95 backdrop-blur-md px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-slate-200 flex items-center gap-3">
+            <div className="animate-spin rounded-full h-4 w-4 border-[2.5px] border-slate-900 border-t-transparent" />
+            <span className="text-sm font-bold text-slate-700 tracking-tight">Loading Restricted Areas...</span>
+          </div>
+        </div>
+      )}
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
       {map && cloudData && showCloudLayer && <CloudLayer map={map} cloudData={cloudData} />}
-      {map && airports.length > 0 ? (
+      {map && displayedAirports.length > 0 && !isCalculating ? (
         <>
-          {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports:`, {
-            sampleIds: airports.slice(0, 5).map(ap => ap.id).join(', '),
-            toweredCount: airports.filter(ap => ap.type === 'towered').length,
-            nonToweredCount: airports.filter(ap => ap.type === 'non-towered').length
-          })}
           <AirportMarkers
             map={map}
-            airports={airports}
+            airports={displayedAirports}
             departureId={currentDepartureId}
             destinationId={currentDestinationId}
           />
         </>
       ) : (
-        map && console.log('🛑 Not rendering AirportMarkers: airports.length =', airports.length)
+        map && console.log('🛑 Not rendering AirportMarkers: airports.length =', displayedAirports.length)
       )}
-      {map && waypoints.length > 0 && <WaypointMarkers map={map} waypoints={waypoints} />}
-      {map && route && <RouteLayer map={map} route={route} />}
+      {map && displayedWaypoints.length > 0 && !isCalculating && <WaypointMarkers map={map} waypoints={displayedWaypoints} />}
+      {map && routes.length > 0 && (
+        <RouteLayer
+          map={map}
+          routes={routes}
+          selectedIndex={selectedRouteIndex}
+          highlightedSegmentIndex={highlightedSegmentIndex}
+          onRouteSelect={setSelectedRouteIndex}
+        />
+      )}
 
       {error && (
         <ErrorDisplay
@@ -914,10 +1149,10 @@ export default function MapContainer() {
         onPlanRoute={handlePlanRoute}
         onClearRoute={handleClearRoute}
         isCalculating={isCalculating}
-        routeInfo={route ? {
-          distance_nm: Math.round(route.distance_nm),
-          estimated_time_min: route.estimated_time_min,
-          type: route.type,
+        routeInfo={currentRoute ? {
+          distance_nm: Math.round(currentRoute.distance_nm),
+          estimated_time_min: currentRoute.estimated_time_min,
+          type: currentRoute.type,
         } : null}
         showCloudLayer={showCloudLayer}
         onToggleCloudLayer={handleToggleCloudLayer}
@@ -929,12 +1164,13 @@ export default function MapContainer() {
         isVisible={showReasoning}
         onToggle={handleToggleReasoning}
         weather={weather}
-        route={route && currentDeparture && currentArrival ? {
+        route={currentRoute && currentDeparture && currentArrival ? {
           departure: currentDeparture,
           arrival: currentArrival,
-          distance_nm: route.distance_nm,
-          estimated_time_min: route.estimated_time_min,
+          distance_nm: currentRoute.distance_nm,
+          estimated_time_min: currentRoute.estimated_time_min,
         } : undefined}
+        onSegmentSelect={setHighlightedSegmentIndex}
       />
 
       <CacheStatus />

@@ -1,63 +1,89 @@
 'use client'
 
-import { useEffect } from 'react'
-import mapboxgl from 'mapbox-gl'
-import { Position } from 'geojson'
+import { useEffect, useRef } from 'react'
 import { COLORS } from '@/lib/constants'
 import { RouteResult } from '@/lib/routing/route'
 
 interface RouteLayerProps {
   map: mapboxgl.Map
-  route: RouteResult | null
-  coordinates?: Position[] // Fallback for simple display if needed
+  routes: RouteResult[]
+  selectedIndex: number
+  highlightedSegmentIndex: number | null
+  onRouteSelect: (index: number) => void
 }
 
-export default function RouteLayer({ map, route }: RouteLayerProps) {
+export default function RouteLayer({
+  map,
+  routes,
+  selectedIndex,
+  highlightedSegmentIndex,
+  onRouteSelect
+}: RouteLayerProps) {
+  // Use ref to keep track of handler for cleanup without re-binding on every render
+  const onRouteSelectRef = useRef(onRouteSelect)
+  useEffect(() => { onRouteSelectRef.current = onRouteSelect }, [onRouteSelect])
+
   useEffect(() => {
     const isMapLoaded = map && map.getStyle();
-    if (!isMapLoaded || !route || (!route.segments && (!route.coordinates || route.coordinates.length < 2))) return
+    if (!isMapLoaded || !routes || routes.length === 0) return
 
     const sourceId = 'route-source'
     const lineLayerId = 'route-line-layer'
     const labelLayerId = 'route-label-layer'
+    const clickLayerId = 'route-click-layer' // Invisible wide layer for easier clicking
 
-    // Construct FeatureCollection from segments if available
-    // If not (e.g. legacy route or no segments provided), fall back to single LineString
-    let routeGeoJSON: GeoJSON.FeatureCollection<GeoJSON.LineString>
+    // Construct FeatureCollection from ALL routes
+    const features: GeoJSON.Feature<GeoJSON.LineString>[] = []
 
-    if (route.segments) {
-      const features: GeoJSON.Feature<GeoJSON.LineString>[] = route.segments.map((seg, index) => ({
-        type: 'Feature',
-        properties: {
-          id: index,
-          distance: seg.distance,
-          exceedsLimit: seg.exceedsLimit
-        },
-        geometry: {
-          type: 'LineString',
-          coordinates: [seg.start, seg.end]
-        }
-      }))
-      routeGeoJSON = {
-        type: 'FeatureCollection',
-        features
-      }
-    } else {
-      // Fallback for simple coordinate list
-      routeGeoJSON = {
-        type: 'FeatureCollection',
-        features: [{
+    routes.forEach((route, routeIdx) => {
+      const isSelected = routeIdx === selectedIndex
+
+      if (route.segments) {
+        route.segments.forEach((seg, segIdx) => {
+          const isHighlighted = isSelected && segIdx === highlightedSegmentIndex
+
+          features.push({
+            type: 'Feature',
+            properties: {
+              routeIndex: routeIdx,
+              segmentIndex: segIdx,
+              distance: seg.distance,
+              exceedsLimit: seg.exceedsLimit,
+              isSelected,
+              isHighlighted,
+              // Sort key to ensure selected route renders ON TOP
+              sortKey: isSelected ? (isHighlighted ? 2 : 1) : 0
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: [seg.start, seg.end]
+            }
+          })
+        })
+      } else {
+        // Fallback for simple coordinate list
+        features.push({
           type: 'Feature',
           properties: {
+            routeIndex: routeIdx,
+            segmentIndex: 0,
             distance: route.distance_nm,
-            exceedsLimit: false
+            exceedsLimit: false,
+            isSelected,
+            isHighlighted: false,
+            sortKey: isSelected ? 1 : 0
           },
           geometry: {
             type: 'LineString',
             coordinates: route.coordinates || []
           }
-        }]
+        })
       }
+    })
+
+    const routeGeoJSON: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
+      type: 'FeatureCollection',
+      features
     }
 
     try {
@@ -72,7 +98,35 @@ export default function RouteLayer({ map, route }: RouteLayerProps) {
         source.setData(routeGeoJSON)
       }
 
-      // Add Line Layer
+      // 1. Invisible Click Target Layer (wider for easier clicking)
+      if (!map.getLayer(clickLayerId)) {
+        map.addLayer({
+          id: clickLayerId,
+          type: 'line',
+          source: sourceId,
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-width': 20,
+            'line-opacity': 0
+          }
+        })
+
+        // Add Click Handler
+        map.on('click', clickLayerId, (e) => {
+          if (e.features && e.features[0]) {
+            const rIdx = e.features[0].properties?.routeIndex
+            if (typeof rIdx === 'number') {
+              onRouteSelectRef.current(rIdx)
+            }
+          }
+        })
+
+        // Add Cursor Pointer
+        map.on('mouseenter', clickLayerId, () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', clickLayerId, () => { map.getCanvas().style.cursor = '' })
+      }
+
+      // 2. Visible Line Layer
       if (!map.getLayer(lineLayerId)) {
         map.addLayer({
           id: lineLayerId,
@@ -81,57 +135,65 @@ export default function RouteLayer({ map, route }: RouteLayerProps) {
           layout: {
             'line-join': 'round',
             'line-cap': 'round',
+            'line-sort-key': ['get', 'sortKey'] // Render selected routes on top
           },
           paint: {
-            // Use Red if exceeds limit, otherwise standard blue
             'line-color': [
               'case',
-              ['get', 'exceedsLimit'],
-              '#ef4444', // Red
-              COLORS.ROUTE_LINE // Blue
+              ['boolean', ['get', 'isHighlighted'], false],
+              '#ef4444', // Red (Highlighted Segment)
+
+              ['boolean', ['get', 'exceedsLimit'], false],
+              '#ef4444', // Red (Limit Exceeded)
+
+              // Both Selected and Unselected are now Blue, just diff opacity
+              COLORS.ROUTE_LINE,
             ],
-            'line-width': COLORS.ROUTE_LINE_WIDTH,
-            'line-opacity': 0.8,
+            'line-width': [
+              'case',
+              ['get', 'isSelected'],
+              COLORS.ROUTE_LINE_WIDTH + 1, // Thicker for selected
+              3 // Slightly wider for unselected so they are visible with opacity
+            ],
+            'line-opacity': [
+              'case',
+              ['boolean', ['get', 'isHighlighted'], false],
+              1.0, // Highlighted segment always full opacity
+
+              ['get', 'isSelected'],
+              1.0, // Selected route full opacity
+
+              0.6 // Unselected routes 60% opacity
+            ],
           },
         })
       }
 
-      // Add Label Layer
+      // 3. Label Layer (Only for selected route)
       if (!map.getLayer(labelLayerId)) {
         map.addLayer({
           id: labelLayerId,
           type: 'symbol',
           source: sourceId,
+          filter: ['==', 'isSelected', true], // Only show labels for selected route
           layout: {
             'symbol-placement': 'line-center',
             'text-field': ['concat', ['to-string', ['round', ['get', 'distance']]], ' nm'],
-            'text-size': 12, // Fixed size, does not scale with zoom (zoom-independent)
+            'text-size': 12,
             'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-            'text-offset': [0, 1], // Offset slightly above line
+            'text-offset': [0, 1],
             'text-allow-overlap': false,
             'text-ignore-placement': false
           },
           paint: {
-            'text-color': '#1f2937', // Gray-800
+            'text-color': '#1f2937',
             'text-halo-color': '#ffffff',
             'text-halo-width': 2
           }
         })
-      }
-
-      // Fit bounds
-      const allCoords = route.coordinates || []
-      if (allCoords.length > 0) {
-        const bounds = new mapboxgl.LngLatBounds()
-        allCoords.forEach((coord) => bounds.extend([coord[0], coord[1]]))
-
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, {
-            padding: 100,
-            maxZoom: 10,
-            duration: 1000,
-          })
-        }
+      } else {
+        // Update filter if layer already exists (to handle selection changes)
+        map.setFilter(labelLayerId, ['==', 'isSelected', true])
       }
 
     } catch (err) {
@@ -143,13 +205,14 @@ export default function RouteLayer({ map, route }: RouteLayerProps) {
         if (map.getStyle()) {
           if (map.getLayer(labelLayerId)) map.removeLayer(labelLayerId)
           if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId)
+          if (map.getLayer(clickLayerId)) map.removeLayer(clickLayerId)
           if (map.getSource(sourceId)) map.removeSource(sourceId)
         }
       } catch (err) {
-        console.warn('Error removing route layer:', err)
+        // Ignored
       }
     }
-  }, [map, route])
+  }, [map, routes, selectedIndex, highlightedSegmentIndex])
 
   return null
 }

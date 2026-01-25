@@ -10,9 +10,13 @@ import {
 import { ROUTE_CONFIG } from '../constants'
 
 /** --- Types & Interfaces --- */
+
 type NodeKind = 'start' | 'end' | 'wp'
 type NodeId = string
 
+/**
+ * Represents a node in the routing graph.
+ */
 interface Node {
   id: NodeId
   kind: NodeKind
@@ -20,13 +24,15 @@ interface Node {
   wpId?: string // only for kind 'wp'
 }
 
+/**
+ * Standard route result interface expected by the UI.
+ */
 export interface RouteResult {
   type: 'direct' | 'avoiding_airspace'
   coordinates: Position[]
   waypoints: string[]
   distance_nm: number
   estimated_time_min: number
-  // Track segment status for UI
   segments?: {
     start: Position
     end: Position
@@ -35,6 +41,9 @@ export interface RouteResult {
   }[]
 }
 
+/**
+ * Input request for route calculation.
+ */
 export interface RouteRequest {
   departure: Airport
   arrival: Airport
@@ -43,10 +52,7 @@ export interface RouteRequest {
   maxSegmentLength?: number
 }
 
-/** --- Helper Math --- */
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n))
-}
+/** --- Helper Math & Geometry --- */
 
 const R_EARTH_M = 6371000
 const NM_TO_M = 1852
@@ -54,70 +60,28 @@ const NM_TO_M = 1852
 function toRad(d: number) { return (d * Math.PI) / 180 }
 function toDeg(r: number) { return (r * 180) / Math.PI }
 
-function greatCircleInterpolate(a: Position, b: Position, t: number): Position {
-  const [lon1, lat1] = a.map(toRad) as [number, number]
-  const [lon2, lat2] = b.map(toRad) as [number, number]
-
-  const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1)
-  const sinLat2 = Math.sin(lat2), cosLat2 = Math.cos(lat2)
-
-  const dLon = lon2 - lon1
-  const cosD = sinLat1 * sinLat2 + cosLat1 * cosLat2 * Math.cos(dLon)
-  const d = Math.acos(clamp(cosD, -1, 1))
-
-  if (d === 0) return a
-
-  const A = Math.sin((1 - t) * d) / Math.sin(d)
-  const B = Math.sin(t * d) / Math.sin(d)
-
-  const x = A * cosLat1 * Math.cos(lon1) + B * cosLat2 * Math.cos(lon2)
-  const y = A * cosLat1 * Math.sin(lon1) + B * cosLat2 * Math.sin(lon2)
-  const z = A * sinLat1 + B * sinLat2
-
-  const lat = Math.atan2(z, Math.sqrt(x * x + y * y))
-  const lon = Math.atan2(y, x)
-
-  return [toDeg(lon), toDeg(lat)]
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n))
 }
 
-function initialBearingDeg(a: Position, b: Position): number {
-  const [lon1, lat1] = a.map(toRad) as [number, number]
-  const [lon2, lat2] = b.map(toRad) as [number, number]
-  const dLon = lon2 - lon1
-
-  const y = Math.sin(dLon) * Math.cos(lat2)
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
-  const brng = Math.atan2(y, x)
-  return (toDeg(brng) + 360) % 360
+function getAngleDiff(a: number, b: number) {
+  const diff = Math.abs(a - b) % 360
+  return diff > 180 ? 360 - diff : diff
 }
 
-function destinationPoint(a: Position, bearingDeg: number, distNm: number): Position {
-  const distM = distNm * NM_TO_M
-  const brng = toRad(bearingDeg)
+/** --- Spatial Indexing --- */
 
-  const [lon1, lat1] = a.map(toRad) as [number, number]
-  const angDist = distM / R_EARTH_M
-
-  const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1)
-  const sinAng = Math.sin(angDist), cosAng = Math.cos(angDist)
-
-  const sinLat2 = sinLat1 * cosAng + cosLat1 * sinAng * Math.cos(brng)
-  const lat2 = Math.asin(clamp(sinLat2, -1, 1))
-
-  const y = Math.sin(brng) * sinAng * cosLat1
-  const x = cosAng - sinLat1 * Math.sin(lat2)
-  const lon2 = lon1 + Math.atan2(y, x)
-
-  return [((toDeg(lon2) + 540) % 360) - 180, toDeg(lat2)]
-}
-
-/** --- Simple spatial hash index (fast neighbor queries) --- */
+/**
+ * Simple spatial hash for fast neighbor lookups.
+ * Buckets nodes into grid cells defined by `cellSizeDeg`.
+ */
 class SpatialHash {
   private cellSizeDeg: number
   private buckets = new Map<string, number[]>()
 
   constructor(private nodes: Node[], maxSegNm: number) {
-    // 1 deg lat ~ 60 nm, choose slightly smaller than max to keep bucket sizes sane
+    // 1 deg lat ~ 60 nm. Choose cell size slightly smaller than max segment 
+    // to ensure we only check relevant buckets, but not too small to fragment.
     const cell = isFinite(maxSegNm) ? clamp((maxSegNm / 60) * 0.9, 0.2, 5) : 2
     this.cellSizeDeg = cell
 
@@ -163,7 +127,8 @@ class SpatialHash {
   }
 }
 
-/** --- Min-heap for A* --- */
+/** --- Priority Queue (MinHeap) --- */
+
 class MinHeap<T> {
   private a: T[] = []
   constructor(private score: (x: T) => number) { }
@@ -175,7 +140,9 @@ class MinHeap<T> {
     if (this.a.length) { this.a[0] = end; this.bubbleDown(0) }
     return top
   }
-  get size() { return this.a.length }
+  get size() { return this.a.length } // Fix: Use size instead of length to match standard
+  get length() { return this.a.length }
+
   private bubbleUp(i: number) {
     const s = this.score
     while (i > 0) {
@@ -201,20 +168,22 @@ class MinHeap<T> {
   }
 }
 
-/** --- A* core (implicit graph) --- */
+/** --- A* Pathfinding Logic --- */
+
 interface AStarOptions {
   maxSegNm: number
   corridorNm: number
   maxExpansions: number
-  deviationPenalty: number // keep route near reference line
-  coneHalfAngle: number // +/- degrees relative to destination bearing
+  deviationPenalty: number
+  coneHalfAngle: number
+  // Map of "id1|id2" -> penalty multiplier
+  penalizedEdges: Map<string, number>
 }
 
-function getAngleDiff(a: number, b: number) {
-  const diff = Math.abs(a - b) % 360
-  return diff > 180 ? 360 - diff : diff
-}
-
+/**
+ * A* search to find a path through waypoints.
+ * Modified to support penalized edges for finding alternative routes.
+ */
 function aStarRoute(
   nodes: Node[],
   startId: NodeId,
@@ -228,14 +197,19 @@ function aStarRoute(
 
   const spatial = new SpatialHash(nodes, opts.maxSegNm)
 
+  // gScore: Cost from start to node
   const gScore = new Map<NodeId, number>([[startId, 0]])
   const cameFrom = new Map<NodeId, NodeId>()
 
-  // cache expensive segment checks
+  // Cache expensive geometry checks
   const segOK = new Map<string, boolean>()
+  // Helper to generate consistent edge keys
   const segKey = (a: NodeId, b: NodeId) => (a < b ? `${a}|${b}` : `${b}|${a}`)
 
-  const h = (n: Node) => calculateDistance(n.pos, goal.pos) // admissible
+  // Heuristic: Straight line distance to goal
+  const h = (n: Node) => calculateDistance(n.pos, goal.pos)
+
+  // fScore = gScore + h
   const f = (id: NodeId) => (gScore.get(id) ?? Infinity) + h(byId.get(id)!)
 
   const open = new MinHeap<NodeId>(f)
@@ -250,8 +224,8 @@ function aStarRoute(
     closed.add(currentId)
     expansions++
 
+    // Goal reached?
     if (currentId === endId) {
-      // reconstruct
       const path: NodeId[] = [currentId]
       let cur = currentId
       while (cameFrom.has(cur)) {
@@ -263,6 +237,7 @@ function aStarRoute(
     }
 
     const current = byId.get(currentId)!
+    // Find neighbors within range
     const neighborIdxs = spatial.queryRadius(current.pos, opts.maxSegNm, 400)
 
     for (const idx of neighborIdxs) {
@@ -270,24 +245,19 @@ function aStarRoute(
       if (nb.id === currentId) continue
       if (closed.has(nb.id)) continue
 
-      // 1. Airspace Point Check
+      // 1. Airspace Point Check (Fastest fail)
       if (isPointInAirspace(nb.pos, airspace)) continue
 
-      // 2. Directional Cone Optimization
-      // Don't apply to Start/End nodes to ensure we can initially move and finally connect
+      // 2. Constraints Check (Direction & Corridor)
+      // Skip for Start/End to ensure connectivity
       if (nb.kind !== 'start' && nb.kind !== 'end') {
-        // Check if neighbor is roughly in the direction of the final goal
-        // Calculate bearing from Current -> Goal
         const bearingToGoal = calculateBearing(current.pos, goal.pos)
-
-        // Calculate bearing from Current -> Neighbor
         const bearingToNb = calculateBearing(current.pos, nb.pos)
 
-        // If angle diff exceeds cone, skip
-        const diff = getAngleDiff(bearingToGoal, bearingToNb)
-        if (diff > opts.coneHalfAngle) continue
+        // Cone check
+        if (getAngleDiff(bearingToGoal, bearingToNb) > opts.coneHalfAngle) continue
 
-        // Also apply Corridor constraint (distance from direct line)
+        // Corridor check
         const dev = calculateDistanceFromLine(nb.pos, start.pos, goal.pos)
         if (dev > opts.corridorNm) continue
       }
@@ -296,7 +266,7 @@ function aStarRoute(
       const d = calculateDistance(current.pos, nb.pos)
       if (d > opts.maxSegNm) continue
 
-      // 4. Airspace Line Check (Cached)
+      // 4. Airspace Line Check (Most expensive, cached)
       const k = segKey(currentId, nb.id)
       let ok = segOK.get(k)
       if (ok === undefined) {
@@ -305,9 +275,18 @@ function aStarRoute(
       }
       if (!ok) continue
 
-      // cost: distance + deviation penalty (keeps route sane)
+      // COST CALCULATION
+      // Base cost = distance
+      // Penalty: Edge penalty (from finding previous routes) + Deviation penalty
+      const penaltyMult = opts.penalizedEdges.get(k) || 1.0
+
       const dev = calculateDistanceFromLine(nb.pos, start.pos, goal.pos)
-      const tentative = (gScore.get(currentId) ?? Infinity) + d + opts.deviationPenalty * dev
+
+      // Cost function:
+      // g(n) = g(current) + (distance * edgePenalty) + (deviation * deviationPenalty)
+      const tentative = (gScore.get(currentId) ?? Infinity)
+        + (d * penaltyMult)
+        + (opts.deviationPenalty * dev)
 
       if (tentative < (gScore.get(nb.id) ?? Infinity)) {
         cameFrom.set(nb.id, currentId)
@@ -321,15 +300,15 @@ function aStarRoute(
 }
 
 /** --- Main Calculation Function --- */
-export async function calculateRouteAsync(request: RouteRequest): Promise<RouteResult> {
+
+export async function calculateRouteAsync(request: RouteRequest): Promise<RouteResult[]> {
   const { departure, arrival, airspace, waypoints, maxSegmentLength } = request
 
-  // Default max leg length if not provided. Use large value if unspecified.
-  const MAX_SEG = maxSegmentLength || 10000
-
+  // Prepare start/end
   const startPos: Position = [departure.lon, departure.lat]
   const endPos: Position = [arrival.lon, arrival.lat]
 
+  // Safety checks
   if (isPointInAirspace(startPos, airspace)) {
     throw new Error('Departure airport is located inside restricted airspace. Unable to plan departure.')
   }
@@ -337,29 +316,16 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
     throw new Error('Arrival airport is located inside restricted airspace. Unable to plan arrival.')
   }
 
-  // 0) Direct if possible
-  const directDist = calculateDistance(startPos, endPos)
-  const isDirectLengthOK = !maxSegmentLength || directDist <= maxSegmentLength
+  const MAX_SEG = maxSegmentLength || 10000
 
-  if (isDirectLengthOK && !checkAirspaceIntersection(startPos, endPos, airspace)) {
-    const totalDistance = directDist
-    const estimatedTime = (totalDistance / ROUTE_CONFIG.GROUNDSPEED_KNOTS) * 60
-    return {
-      type: 'direct',
-      coordinates: [startPos, endPos],
-      waypoints: [],
-      distance_nm: Math.round(totalDistance * 10) / 10,
-      estimated_time_min: Math.round(estimatedTime),
-      segments: [{
-        start: startPos,
-        end: endPos,
-        distance: Math.round(totalDistance * 10) / 10,
-        exceedsLimit: false
-      }]
-    }
-  }
+  // 0. Check Direct Route First
+  // If direct route is valid, it is always the best (shortest) route.
+  // The user wants 3 routes, but if direct is possible, others are just zig-zags for no reason.
+  // HOWEVER, if the user specifically requested multiple options, we should try to provide them
+  // unless they are trivial. But typically "Direct" is just one option.
+  // We'll proceed to finding alternatives even if direct is valid, to give options.
 
-  // 1) Build graph nodes (Only real waypoints + start/end)
+  // 1. Prepare Graph Nodes
   const wpNodes: Node[] = waypoints.map(wp => ({
     id: `wp:${wp.id}`,
     kind: 'wp',
@@ -373,97 +339,139 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
     { id: 'end', kind: 'end', pos: endPos }
   ]
 
-  // 2) Configure Cone & Corridor
-  // "More route distance = less degrees"
-  // Example: 100nm -> 60deg, 1000nm -> 20deg
-  // Linear scale: Clamp inputs
-  const coneHalfAngle = clamp(90 - (directDist / 20), 20, 90)
+  // 2. Find Candidates (Iterative Penalty Method)
+  // We want to find up to 50 distinct routes.
+
+  const candidates: { pathIds: string[], distance: number }[] = []
+  const uniquePathKeys = new Set<string>()
+  const penalizedEdges = new Map<string, number>() // "idA|idB" -> penalty multiplier
+
+  const segKey = (a: NodeId, b: NodeId) => (a < b ? `${a}|${b}` : `${b}|${a}`)
 
   const corridorBase = clamp(MAX_SEG * 2, 50, 400)
-  const corridorAttempts = [corridorBase, corridorBase * 3]
 
-  let pathIds: string[] | null = null
+  // Base options
+  const baseOpts: AStarOptions = {
+    maxSegNm: MAX_SEG,
+    corridorNm: corridorBase * 3,
+    maxExpansions: 20000,
+    deviationPenalty: 0.1,
+    coneHalfAngle: 90,
+    penalizedEdges: penalizedEdges
+  }
 
-  // Try with cone constraint
-  for (const corridorNm of corridorAttempts) {
-    pathIds = aStarRoute(nodes, 'start', 'end', airspace, {
-      maxSegNm: MAX_SEG,
-      corridorNm,
-      maxExpansions: 5000,
-      deviationPenalty: 0.1,
-      coneHalfAngle
+  // Loop to find multiple routes
+  for (let i = 0; i < 50; i++) {
+    // We add slight variations to the parameters to encourage diversity 
+    // in case penalties aren't enough or we're stuck in a local optimum.
+    const iterationOpts = {
+      ...baseOpts,
+      deviationPenalty: 0.1 + (i * 0.05), // Slowly increase deviation penalty
+      // Vary corridor slightly
+      corridorNm: baseOpts.corridorNm * (1 + (i % 5) * 0.2),
+      // Add randomness to cone to explore different directions
+      coneHalfAngle: 90 + (i % 3 === 0 ? 30 : 0)
+    }
+
+    const pathIds = aStarRoute(nodes, 'start', 'end', airspace, iterationOpts)
+
+    if (!pathIds) {
+      // If we can't find a route even with current penalties, we might have exhausted options
+      // or the constraints are too tight.
+      // Break early if we have enough.
+      if (candidates.length >= 3) break
+      continue
+    }
+
+    const key = pathIds.join('->')
+    if (!uniquePathKeys.has(key)) {
+      // New distinct route found!
+
+      // Calculate TRUE distance (without penalties) for the candidate
+      const byId = new Map(nodes.map(n => [n.id, n]))
+      let dist = 0
+      for (let k = 0; k < pathIds.length - 1; k++) {
+        dist += calculateDistance(byId.get(pathIds[k])!.pos, byId.get(pathIds[k + 1])!.pos)
+      }
+
+      candidates.push({ pathIds, distance: dist })
+      uniquePathKeys.add(key)
+    }
+
+    // Penalize edges of this path for the next iteration
+    // This forces A* to look for a different path next time.
+    for (let k = 0; k < pathIds.length - 1; k++) {
+      const kKey = segKey(pathIds[k], pathIds[k + 1])
+      const currentPenalty = penalizedEdges.get(kKey) || 1.0
+      // Increase penalty. 1.2 means 20% more expensive.
+      // Accumulating it ensures we really avoid frequently used highways.
+      penalizedEdges.set(kKey, currentPenalty * 1.5)
+    }
+  }
+
+  // 3. Selection
+  // Sort candidates by actual distance (ascending)
+  candidates.sort((a, b) => a.distance - b.distance)
+
+  // Take top 3
+  const topCandidates = candidates.slice(0, 3)
+
+  // If we found NO routes (e.g. all blocked), try a desperate "Emergency" search
+  if (topCandidates.length === 0) {
+    const fallbackIds = aStarRoute(nodes, 'start', 'end', airspace, {
+      ...baseOpts,
+      corridorNm: 10000,
+      deviationPenalty: 0,
+      coneHalfAngle: 180,
+      penalizedEdges: new Map() // clear penalties
     })
-    if (pathIds) break
+    if (fallbackIds) {
+      // Recalculate dist
+      const byId = new Map(nodes.map(n => [n.id, n]))
+      let dist = 0
+      for (let k = 0; k < fallbackIds.length - 1; k++) {
+        dist += calculateDistance(byId.get(fallbackIds[k])!.pos, byId.get(fallbackIds[k + 1])!.pos)
+      }
+      topCandidates.push({ pathIds: fallbackIds, distance: dist })
+    }
   }
 
-  // Fallback: If strict cone search failed, try opening up the cone (widen search)
-  // This honors the "optimization" request but ensures robustness
-  if (!pathIds) {
-    // Retry with 180 degrees (no cone check effectively) and larger corridor
-    pathIds = aStarRoute(nodes, 'start', 'end', airspace, {
-      maxSegNm: MAX_SEG,
-      corridorNm: corridorBase * 5,
-      maxExpansions: 15000,
-      deviationPenalty: 0.1,
-      coneHalfAngle: 180
-    })
-  }
-
-  if (!pathIds) {
-    // 3rd Try: Desperation mode. 
-    // Huge corridor (effectively global), more expansions, 180 cone.
-    // This allows the route to go completely "wrong" direction if needed to bypass large obstacles.
-    pathIds = aStarRoute(nodes, 'start', 'end', airspace, {
-      maxSegNm: MAX_SEG,
-      corridorNm: 20000, // Covering the whole world generally
-      maxExpansions: 50000, // Try very hard
-      deviationPenalty: 0.0, // Minimal penalty for deviation to encourage finding ANY path
-      coneHalfAngle: 180
-    })
-  }
-
-  if (!pathIds) {
-    throw new Error(
-      `No legal route found within max leg ${MAX_SEG}nm. ` +
-      `Try adding waypoints or increasing max leg length.`
-    )
-  }
-
-  // 3) Reconstruct
+  // 4. Transform to Result Format
   const byId = new Map(nodes.map(n => [n.id, n]))
-  const routeCoordinates: Position[] = pathIds.map(id => byId.get(id)!.pos)
 
-  const routeWaypoints: string[] = pathIds
-    .map(id => byId.get(id)!)
-    .filter(n => n.kind === 'wp')
-    .map(n => n.wpId!)
+  return topCandidates.map(cand => {
+    const routeCoordinates = cand.pathIds.map(id => byId.get(id)!.pos)
+    const routeWaypoints = cand.pathIds
+      .map(id => byId.get(id)!)
+      .filter(n => n.kind === 'wp')
+      .map(n => n.wpId!)
 
-  // Build segments
-  const segments: { start: Position; end: Position; distance: number; exceedsLimit: boolean }[] = []
-  let totalDistance = 0
+    const segments: { start: Position; end: Position; distance: number; exceedsLimit: boolean }[] = []
+    let totalDistance = 0
 
-  for (let i = 0; i < routeCoordinates.length - 1; i++) {
-    const start = routeCoordinates[i]
-    const end = routeCoordinates[i + 1]
-    const dist = calculateDistance(start, end)
-    totalDistance += dist
+    for (let i = 0; i < routeCoordinates.length - 1; i++) {
+      const start = routeCoordinates[i]
+      const end = routeCoordinates[i + 1]
+      const dist = calculateDistance(start, end)
+      totalDistance += dist
 
-    segments.push({
-      start,
-      end,
-      distance: Math.round(dist * 10) / 10,
-      exceedsLimit: dist > MAX_SEG
-    })
-  }
+      segments.push({
+        start,
+        end,
+        distance: Math.round(dist * 10) / 10,
+        exceedsLimit: dist > MAX_SEG
+      })
+    }
 
-  const estimatedTime = (totalDistance / ROUTE_CONFIG.GROUNDSPEED_KNOTS) * 60
+    const estimatedTime = (totalDistance / ROUTE_CONFIG.GROUNDSPEED_KNOTS) * 60
 
-  return {
-    type: 'avoiding_airspace',
-    coordinates: routeCoordinates,
-    waypoints: routeWaypoints,
-    distance_nm: Math.round(totalDistance * 10) / 10,
-    estimated_time_min: Math.round(estimatedTime),
-    segments
-  }
+    return {
+      type: 'avoiding_airspace',
+      coordinates: routeCoordinates,
+      waypoints: routeWaypoints,
+      distance_nm: Math.round(totalDistance * 10) / 10,
+      estimated_time_min: Math.round(estimatedTime),
+      segments
+    }
+  })
 }

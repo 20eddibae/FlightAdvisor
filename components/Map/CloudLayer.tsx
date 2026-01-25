@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import mapboxgl from 'mapbox-gl'
 import type { MapRef } from './MapView'
 
 interface CloudLayerProps {

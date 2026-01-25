@@ -115,7 +115,8 @@ export default function AirspaceLayer({ map, airspace }: AirspaceLayerProps) {
         type: 'geojson',
         data: airspace,
         // Performance optimization: set tolerance to simplify polygons at lower zoom levels
-        tolerance: 0.375, // Default is 0.375, higher = more simplified
+        // Set to 0 to ensure visibility at all zoom levels as requested
+        tolerance: 0,
         buffer: 128, // Default is 128, lower = less memory but more updates
       })
 
