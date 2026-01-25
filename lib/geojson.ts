@@ -20,6 +20,19 @@ export interface Airport {
   elevation: number
   type: 'towered' | 'non-towered'
   notes?: string
+  _metadata?: {
+    isWeatherStation?: boolean
+    metar?: {
+      fltcat?: string
+      cover?: string
+      ceil?: number | null
+      visib?: string
+      temp?: number
+      dewp?: number
+      rawOb?: string
+      obsTime?: string
+    }
+  }
 }
 
 // Waypoint type

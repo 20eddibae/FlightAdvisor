@@ -156,6 +156,17 @@ export default function ReasoningPanel({
   )
 }
 
+function formatWind(metar: { wdir?: number | null; wspd?: number | null; wgst?: number | null }): string {
+  const wspd = metar.wspd ?? 0
+  const wdir = metar.wdir ?? 0
+  if (wspd === 0) return 'Calm'
+  const dir = typeof wdir === 'number' && !Number.isNaN(wdir) ? `${String(wdir).padStart(3, '0')}°` : 'VRB'
+  const gust = typeof metar.wgst === 'number' && !Number.isNaN(metar.wgst) && metar.wgst > wspd
+    ? ` gust ${metar.wgst}`
+    : ''
+  return `${dir} at ${wspd} kt${gust}`
+}
+
 /**
  * Component to display structured reasoning response
  */

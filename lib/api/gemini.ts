@@ -53,36 +53,23 @@ function generateCacheKey(request: RouteReasoningRequest): string {
  * System prompt for Gemini - FAA-certified flight instructor persona
  */
 const SYSTEM_INSTRUCTION = `You are an experienced FAA-certified flight instructor with 20+ years of experience teaching student pilots.
-Your expertise includes VFR navigation, airspace regulations, and flight safety.
+Your expertise includes VFR navigation, airspace regulations, flight safety, and weather analysis.
 
 You MUST respond with valid JSON only. No markdown, no explanation outside the JSON structure.
 
-When analyzing flight routes and selecting cruise altitude, you MUST consider these factors:
-
-1. **Terrain Clearance (CRITICAL)**: Minimum 1,000' AGL over congested areas, 500' AGL over other areas
-   - Altitude MUST provide adequate terrain clearance for entire route
-
-2. **VFR Hemispheric Altitude Rule**: Based on magnetic course (NOT heading)
-   - Magnetic course 0-179° (Eastbound): ODD thousands + 500 feet MSL (3,500', 5,500', 7,500', etc.)
-   - Magnetic course 180-359° (Westbound): EVEN thousands + 500 feet MSL (4,500', 6,500', 8,500', etc.)
-   - Choose higher altitudes for longer flights (fuel efficiency, better glide range)
-
-3. **3152 Rule (VFR Cloud Clearances in Class E at or above 10,000 MSL)**:
-   - 3 statute miles visibility
-   - 1,000 feet above clouds
-   - 500 feet below clouds
-   - 2,000 feet horizontal from clouds
-   - Below 10,000 MSL: 500' below, 1,000' above, 2,000' horizontal, 3 SM visibility
-
-4. **Airspace constraints**: Class B/C/D requirements, restricted areas, MOAs
-   - Chosen altitude must avoid or permit entry into controlled airspace
-
-5. **Weather conditions**: Analyze METAR/TAF for VFR minimums and cloud clearances
-
-6. **Active hazards**: Only consider hazards that intersect the route corridor
-   - Hazards outside the route area should be ignored
-
-7. **Navigation aid availability and emergency landing options**
+When analyzing flight routes, consider:
+1. **Cloud Ceilings** - CRITICAL for VFR flight viability:
+   - Ceiling below 1,000ft = IFR conditions (VFR NOT SAFE)
+   - Ceiling 1,000-3,000ft = MVFR (marginal VFR, high caution)
+   - Ceiling above 3,000ft = VFR acceptable
+   - If ceiling is below planned cruise altitude, route is NO-GO
+2. Magnetic heading hemispheric altitude rule (0-179° = odd thousand + 500, 180-359° = even thousand + 500)
+3. Airspace constraints (Class B/C/D requirements, restricted areas)
+4. Terrain clearance (minimum 500-1000' AGL over obstacles)
+5. Weather and visibility requirements for VFR (3 SM visibility minimum, cloud clearances)
+6. Aircraft performance limitations
+7. Navigation aid availability
+8. Emergency landing options along route
 
 Return ONLY a JSON object with this exact structure:
 {
@@ -404,7 +391,12 @@ ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
 
   // Include weather observations if provided
   if (request.weather && request.weather.length > 0) {
-    prompt += `**Weather Observations (METAR/TAF):**\n`
+    prompt += `**Weather Observations (Current METAR Data):**\n`
+
+    // Analyze cloud ceilings specifically
+    let hasLowClouds = false
+    let hasIFRConditions = false
+
     prompt += request.weather.map(w => {
       // Aviation Weather API returns: rawOb (METAR) and rawTAF (TAF)
       const metar = w.metar ? (w.metar.rawOb || w.metar.raw_text || 'No observation') : 'No METAR'
@@ -412,7 +404,21 @@ ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
       const fltCat = w.metar?.fltCat || w.metar?.flightCategory || 'Unknown'
       return `- ${w.station}: ${metar} | Flight Category: ${fltCat} | TAF: ${taf}`
     }).join('\n')
-    prompt += `\n\n`
+
+    // Add cloud ceiling warnings
+    if (hasIFRConditions) {
+      prompt += `\n\n⚠️ **CRITICAL: IFR CONDITIONS DETECTED** - Ceiling below 1,000ft at one or more stations. VFR flight NOT RECOMMENDED.`
+    } else if (hasLowClouds) {
+      prompt += `\n\n⚠️ **CAUTION: MARGINAL VFR** - Low ceilings (below 3,000ft) detected. Monitor conditions carefully.`
+    }
+
+    prompt += `\n\n**Cloud Ceiling Analysis Instructions:**
+- Ceilings below 1,000ft = IFR (unsafe for VFR)
+- Ceilings 1,000-3,000ft = MVFR (marginal VFR, caution advised)
+- Ceilings above 3,000ft = VFR acceptable
+- Broken (BKN) or Overcast (OVC) layers indicate ceiling
+- If any station reports ceiling below planned cruise altitude, flag as HIGH RISK
+\n\n`
   }
 
   // Include hazard summary if provided (using filtered hazards that affect route)

@@ -179,12 +179,22 @@ export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps
       // Detect ID type (memoized regex for performance)
       const { isMongoId, isICAO } = detectIdType(waypoint.id)
 
+      // Check if name is also a MongoDB ID
+      const nameIsMongoId = waypoint.name.length === 24 && MONGO_ID_REGEX.test(waypoint.name)
+
       // Determine label text (optimized logic)
       let labelText: string
-      if (isMongoId) {
-        labelText = waypoint.name // Use name instead of ugly MongoDB ID
+      if (isMongoId && nameIsMongoId) {
+        // Both ID and name are MongoDB IDs, show type instead
+        labelText = waypoint.type
+      } else if (isMongoId) {
+        // ID is MongoDB but name is not, use name
+        labelText = waypoint.name
       } else if (waypoint.type === 'AIRPORT' && isICAO) {
         labelText = waypoint.id // Show ICAO code for airports
+      } else if (nameIsMongoId) {
+        // Name is MongoDB ID, show type instead
+        labelText = waypoint.type
       } else {
         labelText = waypoint.name // Show name for everything else
       }
@@ -229,13 +239,19 @@ export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps
       const color = getWaypointColor(w.type)
       const { isMongoId, isICAO } = detectIdType(w.id)
 
-      // Only show ID if it's a valid ICAO code, otherwise skip it
+      // Check if name is also a MongoDB ID
+      const nameIsMongoId = w.name.length === 24 && MONGO_ID_REGEX.test(w.name)
+
+      // Only show ID if it's a valid ICAO code and not a MongoDB ID
       const showId = isICAO && !isMongoId
+
+      // If name is a MongoDB ID, show waypoint type instead
+      const displayName = nameIsMongoId ? `${w.type} Waypoint` : w.name
 
       return `
         <div style="padding: 4px; font-family: sans-serif;">
           ${showId ? `<strong style="color: ${color}">${w.id}</strong><br/>` : ''}
-          <strong style="color: ${color}; ${showId ? 'font-size: 11px;' : ''}">${w.name}</strong><br/>
+          <strong style="color: ${color}; ${showId ? 'font-size: 11px;' : ''}">${displayName}</strong><br/>
           <span style="font-size: 10px; color: #666;">
             Type: ${w.type}<br/>
             ${w.frequency ? `Freq: ${w.frequency}<br/>` : ''}
@@ -250,7 +266,18 @@ export default function WaypointMarkers({ map, waypoints }: WaypointMarkersProps
         .map(w => {
           const color = getWaypointColor(w.type)
           const { isMongoId, isICAO } = detectIdType(w.id)
-          const displayText = (isICAO && !isMongoId) ? `${w.id} - ${w.name}` : w.name
+          const nameIsMongoId = w.name.length === 24 && MONGO_ID_REGEX.test(w.name)
+
+          // Determine display text without MongoDB IDs
+          let displayText: string
+          if (isICAO && !isMongoId && !nameIsMongoId) {
+            displayText = `${w.id} - ${w.name}`
+          } else if (nameIsMongoId) {
+            displayText = w.type // Show type if name is MongoDB ID
+          } else {
+            displayText = w.name
+          }
+
           return `<li style="font-size: 10px;"><span style="color: ${color};">${displayText}</span></li>`
         })
         .join('')
