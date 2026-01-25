@@ -72,18 +72,35 @@ export default function AirportMarkers({ map, airports, departureId, destination
     const markers: mapboxgl.Marker[] = []
 
     // Apply clustering based on zoom level
-    // Never cluster departure/destination airports OR major towered airports
-    const toweredAirportIds = airports
-      .filter(ap => ap.type === 'towered')
-      .map(ap => ap.id)
-    const excludeIds = [...toweredAirportIds, departureId, destinationId].filter(Boolean) as string[]
+    // ZOOM-BASED WEATHER STATION FILTERING:
+    // Weather stations (green) only show at zoom >= 9, otherwise they "converge" onto blue airports
+    const WEATHER_STATION_MIN_ZOOM = 9
+    const shouldShowWeatherStations = zoom >= WEATHER_STATION_MIN_ZOOM
+
+    // Filter out weather stations if zoom is too low
+    const filteredAirports = shouldShowWeatherStations
+      ? airports
+      : airports.filter(ap => !ap._metadata?.isWeatherStation)
+
+    console.log(`🌤️ Weather stations ${shouldShowWeatherStations ? 'VISIBLE' : 'HIDDEN'} at zoom ${zoom.toFixed(1)} (threshold: ${WEATHER_STATION_MIN_ZOOM})`)
+
+    // Only exclude departure/destination airports from clustering
+    // All other airports (including towered) will cluster at appropriate zoom levels
+    const excludeIds = [departureId, destinationId].filter(Boolean) as string[]
     const radiusNM = getClusterRadiusNM(zoom)
-    const clusters = clusterAirports(airports, radiusNM, excludeIds)
+    const clusters = clusterAirports(filteredAirports, radiusNM, excludeIds)
 
-    console.log(`🏢 Always showing ${toweredAirportIds.length} major airports individually (never clustered)`)
+    const toweredCount = filteredAirports.filter(ap => ap.type === 'towered').length
+    const excludedCount = excludeIds.length
+    console.log(`🏢 Clustering ${filteredAirports.length} airports (${toweredCount} towered) with ${radiusNM}nm radius`)
+    console.log(`   Excluding ${excludedCount} airports from clustering: ${excludeIds.join(', ') || 'none'}`)
 
-    if (zoom < 9 && clusters.length < airports.length) {
-      console.log(`✈️  Clustering airports at zoom ${zoom.toFixed(1)}: ${airports.length} → ${clusters.length} (${radiusNM}nm radius)`)
+    const clusterCount = clusters.filter(c => c.isCluster).length
+    const individualCount = clusters.filter(c => !c.isCluster).length
+    if (clusters.length < filteredAirports.length) {
+      console.log(`✈️  Clustered: ${filteredAirports.length} airports → ${clusters.length} markers (${clusterCount} clusters, ${individualCount} individual) at zoom ${zoom.toFixed(1)}`)
+    } else {
+      console.log(`✈️  No clustering needed: all ${filteredAirports.length} airports shown individually at zoom ${zoom.toFixed(1)}`)
     }
 
     clusters.forEach((cluster) => {

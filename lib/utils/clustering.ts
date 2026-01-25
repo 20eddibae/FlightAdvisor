@@ -32,12 +32,12 @@ function distanceNM(lat1: number, lon1: number, lat2: number, lon2: number): num
  */
 export function getClusterRadiusNM(zoom: number): number {
   if (zoom >= 12) return 0       // Show all details (very high zoom)
-  if (zoom >= 10) return 5       // Terminal area (high zoom)
-  if (zoom >= 8) return 20       // Approach/Departure (medium-high)
-  if (zoom >= 6) return 50       // Enroute Low (medium)
-  if (zoom >= 4) return 100      // Enroute High (medium-low)
-  if (zoom >= 3) return 200      // Regional (low)
-  return 400                     // Global (very low)
+  if (zoom >= 10) return 2       // Terminal area (high zoom)
+  if (zoom >= 8) return 12       // Approach/Departure (medium-high)
+  if (zoom >= 6) return 35       // Enroute Low (medium)
+  if (zoom >= 4) return 80       // Enroute High (medium-low)
+  if (zoom >= 3) return 160      // Regional (low)
+  return 320                     // Global (very low)
 }
 
 export interface WaypointCluster {
