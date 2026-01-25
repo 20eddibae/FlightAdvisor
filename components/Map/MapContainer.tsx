@@ -1310,14 +1310,14 @@ export default function MapContainer() {
       />
 
       <FlightSelector
-        currentRoute={route && currentDeparture && currentArrival ? {
+        currentRoute={currentRoute && currentDeparture && currentArrival ? {
           departure: currentDeparture,
           arrival: currentArrival,
-          distance_nm: route.distance_nm,
-          estimated_time_min: route.estimated_time_min,
-          type: route.type,
-          waypoints: route.waypoints,
-          coordinates: route.coordinates as [number, number][],
+          distance_nm: currentRoute.distance_nm,
+          estimated_time_min: currentRoute.estimated_time_min,
+          type: currentRoute.type,
+          waypoints: currentRoute.waypoints,
+          coordinates: currentRoute.coordinates as [number, number][],
           cruise_altitude: reasoning?.Altitude,
         } : undefined}
         onLoadFlight={handleLoadFlight}
