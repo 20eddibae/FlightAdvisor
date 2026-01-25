@@ -30,6 +30,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-select": "^2.2.6",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.91.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@turf/turf": "^7.3.2",
@@ -55,6 +56,6 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "vercel": "^39.0.0"
+    "vercel": "^32.3.0"
   }
 }

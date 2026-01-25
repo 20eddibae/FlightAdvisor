@@ -258,32 +258,28 @@ export default function SavedFlightsPanel({ onLoadFlight }: SavedFlightsPanelPro
             {flights.map((flight) => (
               <div
                 key={flight.id}
-                className={`relative border rounded-xl p-4 transition-all hover:shadow-md ${
-                  flight.has_alert && !flight.alert_acknowledged
+                className={`relative border rounded-xl p-4 transition-all hover:shadow-md ${flight.has_alert && !flight.alert_acknowledged
                     ? getSeverityStyles(flight.alert_severity)
                     : 'bg-white border-gray-200 hover:border-gray-300'
-                }`}
+                  }`}
               >
                 {/* Alert banner */}
                 {flight.has_alert && !flight.alert_acknowledged && (
                   <div className="mb-3 pb-3 border-b border-current/10">
                     <div className="flex items-start gap-2">
-                      <div className={`p-1.5 rounded-lg ${
-                        flight.alert_severity === 'high' ? 'bg-red-100' :
-                        flight.alert_severity === 'medium' ? 'bg-amber-100' : 'bg-blue-100'
-                      }`}>
-                        <svg className={`w-4 h-4 ${
-                          flight.alert_severity === 'high' ? 'text-red-600' :
-                          flight.alert_severity === 'medium' ? 'text-amber-600' : 'text-blue-600'
-                        }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className={`p-1.5 rounded-lg ${flight.alert_severity === 'high' ? 'bg-red-100' :
+                          flight.alert_severity === 'medium' ? 'bg-amber-100' : 'bg-blue-100'
+                        }`}>
+                        <svg className={`w-4 h-4 ${flight.alert_severity === 'high' ? 'text-red-600' :
+                            flight.alert_severity === 'medium' ? 'text-amber-600' : 'text-blue-600'
+                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-semibold ${
-                          flight.alert_severity === 'high' ? 'text-red-700' :
-                          flight.alert_severity === 'medium' ? 'text-amber-700' : 'text-blue-700'
-                        }`}>
+                        <p className={`text-sm font-semibold ${flight.alert_severity === 'high' ? 'text-red-700' :
+                            flight.alert_severity === 'medium' ? 'text-amber-700' : 'text-blue-700'
+                          }`}>
                           Weather Alert
                         </p>
                         <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{flight.alert_message}</p>
