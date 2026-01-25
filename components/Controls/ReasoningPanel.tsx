@@ -9,6 +9,11 @@ interface ReasoningPanelProps {
   isLoading: boolean
   isVisible: boolean
   onToggle: () => void
+  weather?: Array<{
+    station: string
+    metar: any | null
+    taf: any | null
+  }>
 }
 
 export default function ReasoningPanel({
@@ -16,6 +21,7 @@ export default function ReasoningPanel({
   isLoading,
   isVisible,
   onToggle,
+  weather,
 }: ReasoningPanelProps) {
   return (
     <Card className="absolute top-0 right-0 z-10 bg-white shadow-lg w-96 max-h-[calc(100vh-2rem)] flex flex-col rounded-none">
@@ -52,7 +58,7 @@ export default function ReasoningPanel({
 
             {!isLoading && reasoning && (
               <div className="space-y-4">
-                <StructuredReasoningDisplay reasoning={reasoning} />
+                <StructuredReasoningDisplay reasoning={reasoning} weather={weather} />
               </div>
             )}
 
@@ -77,7 +83,17 @@ export default function ReasoningPanel({
 /**
  * Component to display structured reasoning response
  */
-function StructuredReasoningDisplay({ reasoning }: { reasoning: RouteReasoningResponse }) {
+function StructuredReasoningDisplay({
+  reasoning,
+  weather
+}: {
+  reasoning: RouteReasoningResponse
+  weather?: Array<{
+    station: string
+    metar: any | null
+    taf: any | null
+  }>
+}) {
   const { Altitude, Issues, Segment_Analysis, Mag_Heading, Go_NoGo, Go_NoGo_Reasoning } = reasoning
 
   return (
@@ -101,6 +117,67 @@ function StructuredReasoningDisplay({ reasoning }: { reasoning: RouteReasoningRe
           Based on hemispheric altitude rule (VFR)
         </p>
       </div>
+
+      {/* Weather Section */}
+      {weather && weather.length > 0 && (
+        <div className="p-3 bg-sky-50 border border-sky-200 rounded-lg">
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+            <span className="text-sky-600">☁️</span>
+            Weather Observations
+          </h3>
+          <div className="space-y-3">
+            {weather.map((station, idx) => (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs bg-sky-200 px-2 py-1 rounded">
+                    {station.station}
+                  </span>
+                </div>
+
+                {/* METAR Display */}
+                {station.metar ? (
+                  <div className="bg-white p-2 rounded border border-sky-100">
+                    <p className="text-xs font-semibold text-sky-700 mb-1">METAR</p>
+                    <p className="text-xs font-mono text-gray-700 leading-relaxed">
+                      {station.metar.rawOb || station.metar.raw_text || 'No data available'}
+                    </p>
+                    {station.metar.flightCategory && (
+                      <div className="mt-1">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          station.metar.flightCategory === 'VFR' ? 'bg-green-100 text-green-700' :
+                          station.metar.flightCategory === 'MVFR' ? 'bg-yellow-100 text-yellow-700' :
+                          station.metar.flightCategory === 'IFR' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {station.metar.flightCategory}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-2 rounded border border-gray-200">
+                    <p className="text-xs text-gray-500">No METAR available</p>
+                  </div>
+                )}
+
+                {/* TAF Display */}
+                {station.taf ? (
+                  <div className="bg-white p-2 rounded border border-sky-100">
+                    <p className="text-xs font-semibold text-sky-700 mb-1">TAF (Forecast)</p>
+                    <p className="text-xs font-mono text-gray-700 leading-relaxed">
+                      {station.taf.rawTAF || station.taf.raw_text || 'No data available'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-2 rounded border border-gray-200">
+                    <p className="text-xs text-gray-500">No TAF available</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Magnetic Headings */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">

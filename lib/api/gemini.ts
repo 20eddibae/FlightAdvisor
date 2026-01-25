@@ -17,6 +17,20 @@ export interface RouteReasoningRequest {
   distance_nm: number
   estimated_time_min: number
   route_type: 'direct' | 'avoiding_airspace'
+  weather?: Array<{
+    station: string
+    metar: any | null
+    taf: any | null
+  }>
+  hazards?: Array<{
+    id: string
+    kind: string
+    phenomenon: string | null
+    severity: string | null
+    validFrom: string | null
+    validTo: string | null
+    rawText: string | null
+  }>
 }
 
 export interface RouteReasoningResponse {
@@ -93,6 +107,16 @@ function calculateMagneticHeading(
 }
 
 /**
+ * Choose a conservative cruise altitude based on average magnetic heading
+ */
+function chooseCruiseAltitude(avgHeading: number): number {
+  // Hemispheric VFR rule: 0-179 => odd thousands + 500, 180-359 => even thousands + 500
+  // Choose 3,500' for odd, 4,500' for even as conservative defaults in the demo
+  if (isNaN(avgHeading)) return 3500
+  return avgHeading >= 0 && avgHeading < 180 ? 3500 : 4500
+}
+
+/**
  * Calculate appropriate VFR cruise altitude based on magnetic heading
  * Hemispheric rule: 0-179° = odd thousands + 500, 180-359° = even thousands + 500
  */
@@ -113,7 +137,8 @@ export async function generateRouteReasoning(
   // Calculate magnetic headings for each leg
   const magHeadings = calculateMagneticHeadings(request)
   const avgHeading =
-    magHeadings.reduce((sum, h) => sum + h, 0) / magHeadings.length
+    magHeadings.reduce((sum, h) => sum + h, 0) / (magHeadings.length || 1)
+  const cruiseAltitude = chooseCruiseAltitude(avgHeading)
 
   // Check if API key is available
   if (!GEMINI_API_KEY) {
@@ -156,7 +181,7 @@ export async function generateRouteReasoning(
       parsedResponse = JSON.parse(jsonText)
     } catch (parseError) {
       console.error('Failed to parse Gemini JSON response:', parseError)
-      return generateFallbackReasoning(request, magHeadings)
+      return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
     }
 
     // Cache the result
@@ -170,10 +195,10 @@ export async function generateRouteReasoning(
     reasoningCache.set(cacheKey, parsedResponse)
 
     return parsedResponse
-  } catch (error) {
+    } catch (error) {
     console.error('Gemini API error:', error)
     // Fall back to pre-written reasoning
-    return generateFallbackReasoning(request, magHeadings)
+    return generateFallbackReasoning(request, magHeadings, cruiseAltitude)
   }
 }
 
@@ -207,6 +232,7 @@ function calculateMagneticHeadings(request: RouteReasoningRequest): number[] {
 function generateFallbackReasoning(
   request: RouteReasoningRequest,
   magHeadings: number[],
+  cruiseAltitude: number,
 ): RouteReasoningResponse {
   const segmentAnalysis: string[] = []
 
@@ -281,6 +307,27 @@ function buildPrompt(
 ${waypoints.map((wp, i) => `- ${wp} (heading ${magHeadings[i]}°)`).join('\n')}
 
 `
+  }
+
+  // Include weather observations if provided
+  if (request.weather && request.weather.length > 0) {
+    prompt += `**Weather Observations (METAR/TAF):**\n`
+    prompt += request.weather.map(w => {
+      const metar = w.metar ? (w.metar.raw_text || JSON.stringify(w.metar).slice(0,200)) : 'No METAR'
+      const taf = w.taf ? (w.taf.raw_text || JSON.stringify(w.taf).slice(0,200)) : 'No TAF'
+      return `- ${w.station}: METAR=${metar}; TAF=${taf}`
+    }).join('\n')
+    prompt += `\n\n`
+  }
+
+  // Include hazard summary if provided
+  if (request.hazards && request.hazards.length > 0) {
+    prompt += `**Active Hazards:**\n`
+    prompt += request.hazards.slice(0,10).map(h => `- ${h.kind} ${h.id}: ${h.phenomenon || 'unknown'} (${h.severity || 'unknown'})`).join('\n')
+    if (request.hazards.length > 10) {
+      prompt += `\n- ...and ${request.hazards.length - 10} more hazards`
+    }
+    prompt += `\n\n`
   }
 
   prompt += `**Airspace Considerations:**
