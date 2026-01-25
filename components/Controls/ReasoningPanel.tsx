@@ -112,7 +112,7 @@ function StructuredReasoningDisplay({
       {/* Cruise Altitude */}
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <h3 className="font-semibold text-sm mb-1">Recommended Cruise Altitude</h3>
-        <p className="text-2xl font-bold text-blue-700">{Altitude.toLocaleString()}' MSL</p>
+        <p className="text-2xl font-bold text-blue-700">{Altitude?.toLocaleString() ?? 'N/A'}' MSL</p>
         <p className="text-xs text-muted-foreground mt-1">
           Based on hemispheric altitude rule (VFR)
         </p>
