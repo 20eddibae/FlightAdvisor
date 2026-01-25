@@ -361,7 +361,7 @@ export async function calculateRouteAsync(request: RouteRequest): Promise<RouteR
   }
 
   // Loop to find multiple routes
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 20; i++) {
     // We add slight variations to the parameters to encourage diversity 
     // in case penalties aren't enough or we're stuck in a local optimum.
     const iterationOpts = {
