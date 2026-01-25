@@ -37,10 +37,29 @@ export default function AirportMarkers({ map, airports, departureId, destination
   }, [map])
 
   useEffect(() => {
-    if (!map || airports.length === 0) return
+    if (!map || airports.length === 0) {
+      if (!map) {
+        console.log('🛑 AirportMarkers: No map instance')
+      } else if (airports.length === 0) {
+        console.log('🛑 AirportMarkers: No airports to render')
+      }
+      return
+    }
 
     // Safety check: ensure map container is available
-    if (!map.getCanvasContainer()) return
+    if (!map.getCanvasContainer()) {
+      console.log('🛑 AirportMarkers: Map container not ready')
+      return
+    }
+
+    // DEBUG: Log what we received
+    const toweredAirports = airports.filter(ap => ap.type === 'towered')
+    const nonToweredAirports = airports.filter(ap => ap.type === 'non-towered')
+    console.log(`🟢 AirportMarkers rendering: ${airports.length} total (${toweredAirports.length} towered, ${nonToweredAirports.length} non-towered)`)
+
+    if (toweredAirports.length > 0) {
+      console.log('   Towered airports to render:', toweredAirports.slice(0, 5).map(ap => ap.id).join(', '))
+    }
 
     // Cleanup existing markers
     markersRef.current.forEach(m => m.remove())

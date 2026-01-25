@@ -118,6 +118,8 @@ export default function MapContainer() {
         // Get what we have NOW (even if incomplete)
         const cachedAirports = getAirportsInViewport(boundsArray)
 
+        console.log(`📦 Cache returned ${cachedAirports.length} airports for viewport`)
+
         // Separate heliports from airports
         cachedAirports
           .filter(ap => ap && ap.id && ap.name)
@@ -145,6 +147,15 @@ export default function MapContainer() {
               })
             }
           })
+
+        // DEBUG: Show breakdown of towered vs non-towered FROM CACHE
+        const toweredFromCache = airports.filter(ap => ap.type === 'towered')
+        const nonToweredFromCache = airports.filter(ap => ap.type === 'non-towered')
+        console.log(`📦 Cache data: ${toweredFromCache.length} towered, ${nonToweredFromCache.length} non-towered`)
+
+        if (toweredFromCache.length > 0) {
+          console.log(`   Towered airports from cache:`, toweredFromCache.slice(0, 5).map(ap => ap.id).join(', '))
+        }
 
         // Render cached airports NOW
         setAirports(airports)
@@ -200,9 +211,10 @@ export default function MapContainer() {
           const airportsData = await airportsRes.json()
 
           // Separate heliports from airports
+          // Type codes: 2=large, 3=medium, 4=small, 6=heliport, 7=military
+          // Traffic codes: 0=VFR only, 1=IFR available
           airportsData.data.forEach((ap: any) => {
-            const isHeliport = ap.type?.toLowerCase().includes('heliport') ||
-                              ap.type?.toLowerCase().includes('helipad')
+            const isHeliport = ap.type === 6  // Numeric code for heliport
 
             if (isHeliport) {
               heliports.push({
@@ -212,14 +224,36 @@ export default function MapContainer() {
                 lon: ap.geometry.coordinates[0],
               })
             } else {
+              // FIXED: Type codes don't indicate size - use ICAO codes instead!
+              // OpenAIP type 2 includes everything from major airports to private strips
+              // Only reliable indicator: 4-letter K-prefixed ICAO codes = towered airports
+              const hasValidICAO = ap.icaoCode && ap.icaoCode.length === 4 && ap.icaoCode.startsWith('K')
+              const isTowered = hasValidICAO  // Only ICAO-coded airports are towered
+
+              // DEBUG: Log ICAO-coded airports to verify detection
+              if (hasValidICAO && airports.length < 5) {
+                console.log(`✈️  Towered airport: ${ap.icaoCode} - ${ap.name} (type=${ap.type}, traffic=${ap.trafficType})`)
+              }
+
+              // Map type codes to readable names
+              const typeNames: Record<number, string> = {
+                2: 'Large Airport',
+                3: 'Medium Airport',
+                4: 'Small Airport',
+                5: 'Closed',
+                6: 'Heliport',
+                7: 'Military/Restricted'
+              }
+              const typeName = typeNames[ap.type as number] || `Type ${ap.type}`
+
               airports.push({
                 id: ap.icaoCode || ap._id,
                 name: ap.name,
                 lat: ap.geometry.coordinates[1],
                 lon: ap.geometry.coordinates[0],
                 elevation: ap.elevation?.value || 0,
-                type: ap.trafficType?.includes(0) ? 'towered' : 'non-towered',
-                notes: `Type: ${ap.type}`,
+                type: isTowered ? 'towered' : 'non-towered',
+                notes: typeName,
               })
             }
           })
@@ -316,11 +350,25 @@ export default function MapContainer() {
             description: 'Heliport',
           }))
 
-          waypoints = [...waypoints, ...majorAirports, ...heliportWaypoints]
+          // DEBUG: Show towered vs non-towered breakdown
+          const toweredCount = airports.filter(ap => ap.type === 'towered').length
+          const nonToweredCount = airports.filter(ap => ap.type === 'non-towered').length
+          console.log(`🏢 Airport breakdown: ${toweredCount} towered, ${nonToweredCount} non-towered`)
 
-          if (majorAirports.length > 0 || heliportWaypoints.length > 0) {
-            console.log(`✓ Added ${majorAirports.length} major airports and ${heliportWaypoints.length} heliports as waypoints`)
+          // DEBUG: Show sample of towered airports
+          const sampleTowered = airports.filter(ap => ap.type === 'towered').slice(0, 5)
+          if (sampleTowered.length > 0) {
+            console.log('   Sample towered airports:', sampleTowered.map(ap => `${ap.id} (${ap.name})`).join(', '))
+          } else {
+            console.warn('⚠️  NO TOWERED AIRPORTS FOUND - All airports marked as non-towered!')
           }
+
+          // REMOVED: Don't add airports to waypoints - they should render as GREEN airport markers
+          // Major airports will be shown by AirportMarkers component with special styling
+
+          waypoints = [...waypoints]  // Just navaids, no airports added
+
+          console.log(`✓ Waypoints prepared: ${waypoints.length} navaids (airports will render separately as green markers)`)
 
           if (airspaceRes.ok) {
             const airspaceData = await airspaceRes.json()
@@ -620,13 +668,18 @@ export default function MapContainer() {
     <>
       <MapView onMapLoad={handleMapLoad} />
       {map && airspace && <AirspaceLayer map={map} airspace={airspace} />}
-      {map && airports.length > 0 && (
-        <AirportMarkers
-          map={map}
-          airports={airports}
-          departureId={currentDepartureId}
-          destinationId={currentDestinationId}
-        />
+      {map && airports.length > 0 ? (
+        <>
+          {console.log(`🗺️  Rendering AirportMarkers with ${airports.length} airports`)}
+          <AirportMarkers
+            map={map}
+            airports={airports}
+            departureId={currentDepartureId}
+            destinationId={currentDestinationId}
+          />
+        </>
+      ) : (
+        map && console.log('🛑 Not rendering AirportMarkers: airports.length =', airports.length)
       )}
       {map && waypoints.length > 0 && <WaypointMarkers map={map} waypoints={waypoints} />}
       {map && route && <RouteLayer map={map} coordinates={route.coordinates} />}

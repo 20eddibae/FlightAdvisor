@@ -52,15 +52,34 @@ export async function loadAirports(
   const bounds = options?.bounds ?? DEFAULT_BOUNDS
   const openAIPAirports = await fetchAirports(bounds)
 
-  return openAIPAirports.map((ap) => ({
-    id: ap.icaoCode || ap._id,
-    name: ap.name,
-    lat: ap.geometry.coordinates[1],
-    lon: ap.geometry.coordinates[0],
-    elevation: ap.elevation?.value ?? 0,
-    type: ap.trafficType?.includes('IFR') ? 'towered' : 'non-towered',
-    notes: `Type: ${ap.type}`,
-  }))
+  return openAIPAirports.map((ap) => {
+    // FIXED: OpenAIP type codes don't indicate airport size
+    // Type 2 includes everything from KSMF (major) to private strips
+    // Only reliable indicator: 4-letter K-prefixed ICAO codes = towered airports
+    const hasValidICAO = ap.icaoCode && ap.icaoCode.length === 4 && ap.icaoCode.startsWith('K')
+    const isTowered = hasValidICAO  // Only ICAO-coded airports are considered towered
+
+    // Map type codes to readable names
+    const typeNames: Record<number, string> = {
+      2: 'Large Airport',
+      3: 'Medium Airport',
+      4: 'Small Airport',
+      5: 'Closed',
+      6: 'Heliport',
+      7: 'Military/Restricted'
+    }
+    const typeName = typeNames[ap.type] || `Type ${ap.type}`
+
+    return {
+      id: ap.icaoCode || ap._id,
+      name: ap.name,
+      lat: ap.geometry.coordinates[1],
+      lon: ap.geometry.coordinates[0],
+      elevation: ap.elevation?.value ?? 0,
+      type: isTowered ? 'towered' : 'non-towered',
+      notes: typeName,
+    }
+  })
 }
 
 export async function loadWaypoints(

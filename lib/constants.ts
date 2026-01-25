@@ -48,7 +48,7 @@ export const DEFAULT_BOUNDS: [number, number, number, number] = [-125.0, 24.0, -
 
 // US Regional bounds for dense data coverage (7 regions × 100 items = 700 total)
 export const US_REGIONS: { name: string; bounds: [number, number, number, number] }[] = [
-  { name: 'West Coast', bounds: [-125.0, 32.0, -114.0, 49.0] }, // CA, OR, WA
+  { name: 'West Coast', bounds: [-125, 32, -115, 49] }, // CA, OR, WA - FIXED: Must match types.ts (was -114, now -115)
   { name: 'Southwest', bounds: [-115.0, 31.0, -103.0, 42.0] }, // AZ, NV, UT, CO, NM
   { name: 'North Central', bounds: [-111.0, 40.0, -96.0, 49.0] }, // MT, WY, ND, SD, NE, KS
   { name: 'South Central', bounds: [-107.0, 25.0, -88.0, 37.0] }, // TX, OK, LA, AR
