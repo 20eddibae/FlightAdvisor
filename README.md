@@ -1,5 +1,7 @@
 # Skyris
 
+[![Demo Video](https://img.youtube.com/vi/7RiUvn7kQME/maxresdefault.jpg)](https://www.youtube.com/watch?v=7RiUvn7kQME)
+
 An intelligent flight planning tool that uses AI reasoning to analyze airspace restrictions, weather conditions, and navigation waypoints to recommend optimal flight paths with transparent explanations.
 
 ## Demo Route
@@ -73,7 +75,7 @@ npm start
 
 ## Usage
 
-1. **View Map**: The application loads with San Carlos (KSQL) and Sacramento (KSMF) airports marked
+1. **Viewk Map**: The application loads with San Carlos (KSQL) and Sacramento (KSMF) airports marked
 2. **Click "Plan Route"**: Calculates optimal route avoiding SFO Class B airspace
 3. **View Reasoning**: AI explains WHY each routing decision was made
 4. **Explore Airspace**: Hover over gray airspace zones to see details
